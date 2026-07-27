@@ -1,0 +1,43 @@
+{
+  "name": "feature-context-builder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gemini CLIを利用して機能単位のコードコンテキストを生成するデスクトップツール",
+  "main": "dist/node/main/main.js",
+  "bin": {
+    "feature-context": "dist/node/cli/index.js"
+  },
+  "scripts": {
+    "dev": "npm run build && electron .",
+    "build": "npm run typecheck && npm run build:node && npm run build:renderer",
+    "build:node": "tsc -p tsconfig.node.json",
+    "build:renderer": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest run",
+    "test:smoke": "electron dist/node/main/smoke.js",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "ignore": "^7.0.5",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.4",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^24.1.0",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^39.8.5",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.6",
+    "vitest": "^3.2.4"
+  }
+}
