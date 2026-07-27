@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Gemini CLIを利用して機能単位のコードコンテキストを生成するデスクトップツール",
+  "description": "Gemini CLIまたはCodex CLIを利用して機能単位のコードコンテキストを生成するデスクトップツール",
   "main": "dist/node/main/main.js",
   "bin": {
     "feature-context": "dist/node/cli/index.js"

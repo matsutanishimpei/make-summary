@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import createIgnore from "ignore";
 import { FeatureContextError } from "./errors.js";
-import type { GeminiFile, ValidationRecord } from "./types.js";
+import type { InvestigationFile, ValidationRecord } from "./types.js";
 
 const blockedDirectories = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
 const blockedExactNames = new Set([".env", "id_rsa", "id_ed25519"]);
@@ -15,7 +15,7 @@ export interface ValidationOutcome {
 
 export async function validateRelatedFiles(
   projectRoot: string,
-  files: GeminiFile[],
+  files: InvestigationFile[],
   selections: Record<string, boolean> = {}
 ): Promise<ValidationOutcome> {
   let rootReal: string;

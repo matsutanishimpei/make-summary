@@ -8,22 +8,24 @@ import {
   parseInvestigation,
   validateRelatedFiles,
   type BuildOptions,
-  type GeminiInfo,
-  type GeminiRunRequest,
-  type GeminiRunner,
+  type AiProvider,
+  type CliInfo,
+  type InvestigationRunRequest,
+  type InvestigationRunner,
   type Investigation
 } from "../../src/core/index.js";
 
-class MockRunner implements GeminiRunner {
+class MockRunner implements InvestigationRunner {
   inspectCalls = 0;
   investigateCalls = 0;
   constructor(
     private readonly result: Investigation,
-    private readonly failure?: FeatureContextError
+    private readonly failure?: FeatureContextError,
+    readonly provider: AiProvider = "gemini"
   ) {}
-  async inspect(): Promise<GeminiInfo> {
+  async inspect(): Promise<CliInfo> {
     this.inspectCalls += 1;
-    return { version: "0.0.0-mock", help: "--prompt --output-format" };
+    return { provider: this.provider, version: "0.0.0-mock", help: "--prompt --output-format" };
   }
   async investigate(): Promise<Investigation> {
     this.investigateCalls += 1;
@@ -47,13 +49,27 @@ afterEach(async () => {
 
 describe("FeatureContextService", () => {
   it("正常な調査結果を最大5件のbundleへ生成する", async () => {
-    const service = new FeatureContextService(new MockRunner(investigation()));
+    const service = createService(new MockRunner(investigation()));
     const result = await service.build(options({ summary: true, concat: true }));
     expect(result.manifest.validation.detected).toBe(3);
     expect(result.manifest.validation.valid).toBe(3);
     expect(result.manifest.bundleFiles.length).toBeLessThanOrEqual(5);
     expect(result.manifest.bundleFiles[0].name).toBe("01-overview.md");
-    expect(await fs.readFile(result.manifestPath, "utf8")).toContain('"schemaVersion": "1.0"');
+    expect(await fs.readFile(result.manifestPath, "utf8")).toContain('"schemaVersion": "1.1"');
+    expect(result.manifest.provider).toEqual({ id: "gemini", cliVersion: "0.0.0-mock" });
+  });
+
+  it("選択したCodexプロバイダーを解決してmanifestへ記録する", async () => {
+    const runner = new MockRunner(investigation(), undefined, "codex");
+    let resolvedProvider: AiProvider | undefined;
+    const service = new FeatureContextService((provider) => {
+      resolvedProvider = provider;
+      return runner;
+    });
+    const result = await service.build(options({ name: "codex", provider: "codex" }));
+    expect(resolvedProvider).toBe("codex");
+    expect(result.manifest.options.provider).toBe("codex");
+    expect(result.manifest.provider).toEqual({ id: "codex", cliVersion: "0.0.0-mock" });
   });
 
   it("多数の関連ソースでも調査件数を制限せず、成果物だけ最大5件にする", async () => {
@@ -70,7 +86,7 @@ describe("FeatureContextService", () => {
         recommended: true
       });
     }
-    const result = await new FeatureContextService(
+    const result = await createService(
       new MockRunner({ ...investigation(), files })
     ).build(options({ name: "many" }));
     expect(result.manifest.validation.detected).toBe(20);
@@ -78,7 +94,7 @@ describe("FeatureContextService", () => {
   });
 
   it("要約とコード連結を個別に無効化できる", async () => {
-    const result = await new FeatureContextService(new MockRunner(investigation())).build(
+    const result = await createService(new MockRunner(investigation())).build(
       options({ name: "no-options", summary: false, concat: false })
     );
     expect(result.manifest.bundleFiles).toHaveLength(1);
@@ -88,7 +104,7 @@ describe("FeatureContextService", () => {
   });
 
   it("要約有効時だけoverviewへ要約を含める", async () => {
-    const result = await new FeatureContextService(new MockRunner(investigation())).build(
+    const result = await createService(new MockRunner(investigation())).build(
       options({ name: "summary-only", summary: true, concat: false })
     );
     const overview = await fs.readFile(result.manifest.bundleFiles[0].path, "utf8");
@@ -98,7 +114,7 @@ describe("FeatureContextService", () => {
 
   it("ユーザー選択を優先し、Geminiを再実行せずbundleだけ再構築する", async () => {
     const runner = new MockRunner(investigation());
-    const service = new FeatureContextService(runner);
+    const service = createService(runner);
     const first = await service.build(options({ name: "rebuild" }));
     const rebuilt = await service.rebuild({
       manifestPath: first.manifestPath,
@@ -117,14 +133,14 @@ describe("FeatureContextService", () => {
     const oversized = investigation();
     oversized.overview = "長い要約".repeat(500);
     await expect(
-      new FeatureContextService(new MockRunner(oversized)).build(
+      createService(new MockRunner(oversized)).build(
         options({ name: "too-small", maxTotalChars: 1000 })
       )
     ).rejects.toMatchObject({ code: "OUTPUT_LIMIT" });
   });
 
   it("連結したコード本文は改行統一以外、元ファイルと一致する", async () => {
-    const result = await new FeatureContextService(new MockRunner(investigation())).build(
+    const result = await createService(new MockRunner(investigation())).build(
       options({ name: "exact-code" })
     );
     const artifact = result.manifest.bundleFiles.find((file) => file.name !== "01-overview.md");
@@ -135,7 +151,7 @@ describe("FeatureContextService", () => {
   });
 
   it("既存成果物は--force相当がなければ上書きしない", async () => {
-    const service = new FeatureContextService(new MockRunner(investigation()));
+    const service = createService(new MockRunner(investigation()));
     await service.build(options({ name: "protected" }));
     await expect(service.build(options({ name: "protected" }))).rejects.toMatchObject({
       code: "OUTPUT_EXISTS"
@@ -148,7 +164,7 @@ describe("FeatureContextService", () => {
     await fs.mkdir(output, { recursive: true });
     await fs.writeFile(path.join(output, "01-overview.md"), "既存内容", "utf8");
     await expect(
-      new FeatureContextService(new MockRunner(investigation())).build(options({ name: "partial" }))
+      createService(new MockRunner(investigation())).build(options({ name: "partial" }))
     ).rejects.toMatchObject({ code: "OUTPUT_EXISTS" });
     expect(await fs.readFile(path.join(output, "01-overview.md"), "utf8")).toBe("既存内容");
   });
@@ -159,16 +175,17 @@ describe("FeatureContextService", () => {
     ["キャンセル", new FeatureContextError("CANCELLED")]
   ])("%sを分類して返す", async (_label, failure) => {
     await expect(
-      new FeatureContextService(new MockRunner(investigation(), failure)).build(
+      createService(new MockRunner(investigation(), failure)).build(
         options({ dryRun: true })
       )
     ).rejects.toMatchObject({ code: failure.code });
   });
 
   it("AbortSignalによるキャンセルを処理する", async () => {
-    const runner: GeminiRunner = {
-      inspect: async () => ({ version: "mock", help: "--output-format" }),
-      investigate: ({ signal }: GeminiRunRequest) =>
+    const runner: InvestigationRunner = {
+      provider: "gemini",
+      inspect: async () => ({ provider: "gemini", version: "mock", help: "--output-format" }),
+      investigate: ({ signal }: InvestigationRunRequest) =>
         new Promise((_resolve, reject) => {
           signal?.addEventListener(
             "abort",
@@ -178,7 +195,7 @@ describe("FeatureContextService", () => {
         })
     };
     const controller = new AbortController();
-    const running = new FeatureContextService(runner).build(options({ dryRun: true }), undefined, controller.signal);
+    const running = createService(runner).build(options({ dryRun: true }), undefined, controller.signal);
     controller.abort();
     await expect(running).rejects.toMatchObject({ code: "CANCELLED" });
   });
@@ -294,4 +311,8 @@ async function write(relativePath: string, content: string) {
   const absolute = path.join(root, ...relativePath.split("/"));
   await fs.mkdir(path.dirname(absolute), { recursive: true });
   await fs.writeFile(absolute, content, "utf8");
+}
+
+function createService(runner: InvestigationRunner): FeatureContextService {
+  return new FeatureContextService(() => runner);
 }

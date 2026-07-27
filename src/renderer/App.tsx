@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   BuildOptions,
   BuildResult,
+  AiProvider,
   ProgressEvent,
   ProgressStage,
   ValidationRecord
 } from "../core/types";
 
-const progressSteps: Array<{ stage: ProgressStage; label: string }> = [
-  { stage: "checking-cli", label: "Gemini CLIを確認中" },
+const baseProgressSteps: Array<{ stage: ProgressStage; label: string }> = [
+  { stage: "checking-cli", label: "AI CLIを確認中" },
   { stage: "investigating", label: "コードベースを調査中" },
   { stage: "validating", label: "関連ファイルを検証中" },
   { stage: "collecting", label: "コードを収集中" },
@@ -18,6 +19,7 @@ const progressSteps: Array<{ stage: ProgressStage; label: string }> = [
 type RunState = "idle" | "running" | "completed" | "error" | "cancelled";
 
 export function App() {
+  const [provider, setProvider] = useState<AiProvider>("gemini");
   const [projectRoot, setProjectRoot] = useState("");
   const [feature, setFeature] = useState("");
   const [summary, setSummary] = useState(true);
@@ -45,12 +47,17 @@ export function App() {
     () => ({
       projectRoot,
       feature: feature.trim(),
+      provider,
       summary,
       concat,
       maxOutputFiles: maxFiles,
       maxTotalChars: maxChars
     }),
-    [projectRoot, feature, summary, concat, maxFiles, maxChars]
+    [projectRoot, feature, provider, summary, concat, maxFiles, maxChars]
+  );
+  const providerName = provider === "codex" ? "Codex" : "Gemini";
+  const progressSteps = baseProgressSteps.map((step) =>
+    step.stage === "checking-cli" ? { ...step, label: `${providerName} CLIを確認中` } : step
   );
 
   const canGenerate =
@@ -70,7 +77,7 @@ export function App() {
     const id = crypto.randomUUID();
     setJobId(id);
     setRunState("running");
-    setProgress({ stage: "checking-cli", message: "Gemini CLIを確認中" });
+    setProgress({ stage: "checking-cli", message: `${providerName} CLIを確認中` });
     setError(null);
     setNotice("");
     setPreview(null);
@@ -97,7 +104,7 @@ export function App() {
   }
 
   async function regenerate() {
-    if (window.confirm("現在の成果物を上書きし、Geminiの調査から再実行しますか？")) {
+    if (window.confirm(`現在の成果物を上書きし、${providerName}の調査から再実行しますか？`)) {
       await generate(true);
     }
   }
@@ -123,7 +130,7 @@ export function App() {
         force: true
       });
       acceptResult(next);
-      setNotice("Geminiを再実行せず、選択内容からbundleを再構築しました。");
+      setNotice("AI CLIを再実行せず、選択内容からbundleを再構築しました。");
     } catch (caught) {
       const problem = normalizeError(caught);
       setError({ message: problem.message, details: problem.details });
@@ -164,7 +171,7 @@ export function App() {
           <p className="eyebrow">READ-ONLY CODE RESEARCH</p>
           <h1>Feature Context Builder</h1>
           <p className="subtitle">
-            調べたい機能を指定すると、Gemini CLIが関連コードを探し、ChatGPTへ添付しやすいMarkdownに整理します。
+            調べたい機能を指定すると、選択したAI CLIが関連コードを探し、ChatGPTへ添付しやすいMarkdownに整理します。
           </p>
         </div>
         <span className={`status-badge status-${runState}`}>
@@ -217,6 +224,20 @@ export function App() {
               placeholder="例: ログイン画面からトークン保存までの認証フロー"
               disabled={runState === "running"}
             />
+          </div>
+
+          <div className="field">
+            <label htmlFor="provider">調査に使うAI CLI</label>
+            <select
+              id="provider"
+              value={provider}
+              onChange={(event) => setProvider(event.target.value as AiProvider)}
+              disabled={runState === "running"}
+            >
+              <option value="gemini">Gemini CLI</option>
+              <option value="codex">Codex CLI</option>
+            </select>
+            <small>選択したCLIを読み取り専用で実行します。各CLIのインストールと認証が必要です。</small>
           </div>
 
           <div className="option-grid">
@@ -300,7 +321,7 @@ export function App() {
           {error && (
             <div className="error-box" role="alert">
               <strong>{error.message}</strong>
-              <p>入力やGemini CLIの状態を確認して、もう一度実行できます。</p>
+              <p>入力や選択したAI CLIの状態を確認して、もう一度実行できます。</p>
               {error.details && <details><summary>技術的な詳細</summary><pre>{error.details}</pre></details>}
             </div>
           )}
@@ -360,7 +381,10 @@ function ResultPanel(props: ResultPanelProps) {
       </div>
 
       <div className="metrics">
-        <Metric label="Geminiが検出" value={`${manifest.validation.detected}件`} />
+        <Metric
+          label={`${manifest.provider.id === "codex" ? "Codex" : "Gemini"}が検出`}
+          value={`${manifest.validation.detected}件`}
+        />
         <Metric label="コードへ採用" value={`${new Set(manifest.bundledSources.map((item) => item.path)).size}件`} />
         <Metric label="添付用ファイル" value={`${manifest.bundleFiles.length}件`} />
         <Metric label="合計文字数" value={manifest.totalChars.toLocaleString()} />
@@ -385,7 +409,7 @@ function ResultPanel(props: ResultPanelProps) {
 
       <div className="source-selection">
         <div className="subheading">
-          <div><h3>関連ソースの選択</h3><p>変更後はGeminiを再実行せず、bundleだけを再構築できます。</p></div>
+          <div><h3>関連ソースの選択</h3><p>変更後はAI CLIを再実行せず、bundleだけを再構築できます。</p></div>
           <button type="button" className="secondary" onClick={props.onRebuild} disabled={props.running}>
             選択内容でbundleを再構築
           </button>

@@ -1,9 +1,15 @@
 import { app, BrowserWindow } from "electron";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const smokeDataDir = mkdtempSync(path.join(os.tmpdir(), "feature-context-smoke-"));
+app.setPath("userData", path.join(smokeDataDir, "user-data"));
+app.setPath("cache", path.join(smokeDataDir, "cache"));
 app.disableHardwareAcceleration();
+app.on("will-quit", () => rmSync(smokeDataDir, { recursive: true, force: true }));
 const timer = setTimeout(() => {
   process.stderr.write("Electron smoke test timed out.\n");
   app.exit(1);
@@ -28,13 +34,15 @@ app.whenReady().then(async () => {
     const state = await window.webContents.executeJavaScript(`({
       title: document.querySelector("h1")?.textContent,
       api: typeof window.featureContext?.start,
-      generateButton: document.querySelector("button.primary")?.textContent?.trim()
+      generateButton: document.querySelector("button.primary")?.textContent?.trim(),
+      providers: Array.from(document.querySelectorAll("#provider option")).map((option) => option.value)
     })`);
     if (
       preloadFailure ||
       state.title !== "Feature Context Builder" ||
       state.api !== "function" ||
-      state.generateButton !== "コンテキストを生成"
+      state.generateButton !== "コンテキストを生成" ||
+      JSON.stringify(state.providers) !== JSON.stringify(["gemini", "codex"])
     ) {
       throw new Error(`Unexpected renderer state: ${JSON.stringify(state)} ${preloadFailure}`);
     }

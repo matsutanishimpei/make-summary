@@ -3,23 +3,23 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { FeatureContextError, asFeatureContextError } from "./errors.js";
-import { GeminiCliRunner } from "./gemini.js";
+import { createInvestigationRunner, isAiProvider, providerLabels } from "./provider.js";
 import { createInvestigationPrompt } from "./prompt.js";
 import { collectSelectedFiles, packageBundle } from "./bundle.js";
 import { validateRelatedFiles } from "./validate.js";
 import type {
   BuildOptions,
   BuildResult,
-  GeminiRunner,
   Manifest,
   ProgressReporter,
-  RebuildOptions
+  RebuildOptions,
+  RunnerResolver
 } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
 export class FeatureContextService {
-  constructor(private readonly runner: GeminiRunner = new GeminiCliRunner()) {}
+  constructor(private readonly resolveRunner: RunnerResolver = createInvestigationRunner) {}
 
   async build(
     options: BuildOptions,
@@ -30,13 +30,16 @@ export class FeatureContextService {
       validateOptions(options);
       const projectRoot = await resolveProjectRoot(options.projectRoot);
       const outputDir = resolveOutputDir(projectRoot, options.outputDir, options.name ?? options.feature);
+      const provider = options.provider ?? "gemini";
+      const providerName = providerLabels[provider];
+      const runner = this.resolveRunner(provider);
       throwIfAborted(signal);
       if (!options.dryRun && !options.force) await assertOutputAvailable(outputDir);
 
-      report({ stage: "checking-cli", message: "Gemini CLIを確認中" });
-      const info = await this.runner.inspect(signal);
+      report({ stage: "checking-cli", message: `${providerName} CLIを確認中` });
+      const info = await runner.inspect(signal);
       report({ stage: "investigating", message: "コードベースを調査中" });
-      const investigation = await this.runner.investigate({
+      const investigation = await runner.investigate({
         projectRoot,
         prompt: createInvestigationPrompt(options.feature, options.summary),
         timeoutMs: options.timeoutMs ?? 180_000,
@@ -66,7 +69,8 @@ export class FeatureContextService {
         maxOutputFiles: options.maxOutputFiles,
         maxTotalChars: options.maxTotalChars,
         maxFileChars: options.maxFileChars ?? Math.min(60_000, options.maxTotalChars),
-        geminiVersion: info.version,
+        provider,
+        cliVersion: info.version,
         gitCommitId,
         warnings: [...validation.warnings, ...collection.warnings],
         dryRun: options.dryRun ?? false,
@@ -101,7 +105,7 @@ export class FeatureContextService {
       report({ stage: "collecting", message: "選択したコードを収集中" });
       const collection = await collectSelectedFiles(projectRoot, validation.records);
       throwIfAborted(signal);
-      report({ stage: "packing", message: "Geminiを再実行せずbundleを再構築中" });
+      report({ stage: "packing", message: "AI CLIを再実行せずbundleを再構築中" });
       const rebuilt = await packageBundle({
         projectRoot,
         outputDir,
@@ -113,7 +117,8 @@ export class FeatureContextService {
         maxOutputFiles: options.maxOutputFiles ?? manifest.options.maxOutputFiles,
         maxTotalChars: options.maxTotalChars ?? manifest.options.maxTotalChars,
         maxFileChars: manifest.options.maxFileChars,
-        geminiVersion: manifest.geminiCliVersion,
+        provider: manifest.provider.id,
+        cliVersion: manifest.provider.cliVersion,
         gitCommitId: await getGitCommitId(projectRoot),
         warnings: [...validation.warnings, ...collection.warnings],
         dryRun: false,
@@ -173,6 +178,7 @@ function assertInside(root: string, target: string): void {
 function validateOptions(options: BuildOptions): void {
   if (
     !options.feature.trim() ||
+    (options.provider !== undefined && !isAiProvider(options.provider)) ||
     !Number.isInteger(options.maxOutputFiles) ||
     options.maxOutputFiles < 1 ||
     options.maxOutputFiles > 5 ||
@@ -198,7 +204,14 @@ async function getGitCommitId(root: string): Promise<string | null> {
 
 async function readManifest(manifestPath: string): Promise<Manifest> {
   try {
-    return JSON.parse(await fs.readFile(path.resolve(manifestPath), "utf8")) as Manifest;
+    const value = JSON.parse(await fs.readFile(path.resolve(manifestPath), "utf8")) as Record<string, unknown>;
+    if (!value.provider && typeof value.geminiCliVersion === "string") {
+      value.provider = { id: "gemini", cliVersion: value.geminiCliVersion };
+      value.schemaVersion = "1.1";
+      const options = value.options as Record<string, unknown> | undefined;
+      if (options) options.provider = "gemini";
+    }
+    return value as unknown as Manifest;
   } catch (error) {
     throw new FeatureContextError("INVALID_OUTPUT", "manifest.jsonを読み取れません。", String(error));
   }

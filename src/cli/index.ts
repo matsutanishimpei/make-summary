@@ -1,12 +1,18 @@
 #!/usr/bin/env node
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { FeatureContextError, FeatureContextService } from "../core/index.js";
+import type { AiProvider } from "../core/index.js";
 
 const program = new Command();
 program
   .name("feature-context")
-  .description("Gemini CLIで指定機能に関連するコードコンテキストを生成します")
+  .description("Gemini CLIまたはCodex CLIで指定機能に関連するコードコンテキストを生成します")
   .argument("<feature>", "調べたい機能・目的")
+  .addOption(
+    new Option("--provider <provider>", "調査に使うAI CLI")
+      .choices(["gemini", "codex"])
+      .default("gemini")
+  )
   .option("--root <path>", "プロジェクトルート", ".")
   .option("--out <path>", "出力ベース（プロジェクト内）")
   .option("--name <name>", "成果物ディレクトリ名")
@@ -28,6 +34,7 @@ program
         {
           projectRoot: flags.root,
           feature,
+          provider: flags.provider as AiProvider,
           outputDir: flags.out,
           name: flags.name,
           summary: flags.summary,

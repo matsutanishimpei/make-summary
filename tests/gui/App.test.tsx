@@ -9,19 +9,20 @@ const result: BuildResult = {
   outputDir: "C:\\project\\.feature-context\\login",
   manifestPath: "C:\\project\\.feature-context\\login\\manifest.json",
   manifest: {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     feature: "ログイン機能",
     projectRoot: "C:\\project",
     generatedAt: "2026-01-01T00:00:00.000Z",
     gitCommitId: null,
     options: {
+      provider: "gemini",
       summary: true,
       concat: true,
       maxOutputFiles: 5,
       maxTotalChars: 120000,
       maxFileChars: 60000
     },
-    geminiCliVersion: "mock",
+    provider: { id: "gemini", cliVersion: "mock" },
     investigation: {
       feature: "ログイン機能",
       overview: "概要",
@@ -76,9 +77,17 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("調べたい機能・目的"), {
       target: { value: "ログイン機能" }
     });
+    fireEvent.change(screen.getByLabelText("調査に使うAI CLI"), {
+      target: { value: "codex" }
+    });
     expect(generate).toBeEnabled();
     fireEvent.click(generate);
-    await waitFor(() => expect(window.featureContext.start).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(window.featureContext.start).toHaveBeenCalledWith(
+        "job-1",
+        expect.objectContaining({ provider: "codex" })
+      )
+    );
     expect(await screen.findByRole("heading", { name: "生成結果" })).toBeInTheDocument();
     expect(screen.getByText("01-overview.md")).toBeInTheDocument();
   });

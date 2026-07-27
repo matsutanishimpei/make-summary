@@ -14,12 +14,12 @@ export type ErrorCode =
   | "INVALID_OPTIONS";
 
 const messages: Record<ErrorCode, string> = {
-  CLI_NOT_FOUND: "Gemini CLIが見つかりません。Gemini CLIをインストールし、ターミナルで gemini --version を確認してください。",
-  CLI_UNAUTHENTICATED: "Gemini CLIが認証されていません。ターミナルで gemini を起動して認証を完了してください。",
-  CLI_FAILED: "Gemini CLIの実行に失敗しました。詳細ログを確認してから再実行してください。",
-  TIMEOUT: "Gemini CLIの処理がタイムアウトしました。対象を絞るか、タイムアウト設定を見直してください。",
+  CLI_NOT_FOUND: "選択したAI CLIが見つかりません。インストール後、ターミナルでバージョンを確認してください。",
+  CLI_UNAUTHENTICATED: "選択したAI CLIが認証されていません。ターミナルで認証を完了してください。",
+  CLI_FAILED: "AI CLIの実行に失敗しました。詳細ログを確認してから再実行してください。",
+  TIMEOUT: "AI CLIの処理がタイムアウトしました。対象を絞るか、タイムアウト設定を見直してください。",
   CANCELLED: "処理をキャンセルしました。入力内容を変更して再実行できます。",
-  INVALID_JSON: "Gemini CLIから有効なJSONを取得できませんでした。もう一度実行してください。",
+  INVALID_JSON: "AI CLIから有効なJSONを取得できませんでした。もう一度実行してください。",
   NO_VALID_FILES: "安全に利用できる関連ファイルがありませんでした。調査対象または除外設定を確認してください。",
   ROOT_NOT_FOUND: "プロジェクトフォルダが存在しません。正しいフォルダを選択してください。",
   READ_DENIED: "プロジェクト内のファイルを読み取れません。アクセス権限を確認してください。",

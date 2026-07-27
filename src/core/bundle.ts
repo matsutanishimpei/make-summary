@@ -23,7 +23,8 @@ interface PackageInput {
   maxOutputFiles: number;
   maxTotalChars: number;
   maxFileChars: number;
-  geminiVersion: string;
+  provider: Manifest["provider"]["id"];
+  cliVersion: string;
   gitCommitId: string | null;
   warnings: string[];
   dryRun: boolean;
@@ -117,7 +118,7 @@ export async function packageBundle(input: PackageInput): Promise<Manifest> {
         reason:
           record.exclusionReason ??
           (!record.included
-            ? "ユーザーまたはGeminiの選択によりコード連結の対象外"
+            ? "ユーザーまたはAI CLIの選択によりコード連結の対象外"
             : "文字数上限または添付用ファイル数上限のため未収録")
       }));
   }
@@ -149,19 +150,23 @@ export async function packageBundle(input: PackageInput): Promise<Manifest> {
       .map((record) => [record.normalizedPath!, record.included])
   );
   const manifest: Manifest = {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     feature: input.investigation.feature,
     projectRoot: input.projectRoot,
     generatedAt,
     gitCommitId: input.gitCommitId,
     options: {
+      provider: input.provider,
       summary: input.summary,
       concat: input.concat,
       maxOutputFiles: input.maxOutputFiles,
       maxTotalChars: input.maxTotalChars,
       maxFileChars: input.maxFileChars
     },
-    geminiCliVersion: input.geminiVersion,
+    provider: {
+      id: input.provider,
+      cliVersion: input.cliVersion
+    },
     investigation: input.investigation,
     relatedFiles: input.records,
     validation: {
@@ -271,6 +276,7 @@ function renderOverview(
     "",
     `生成日時: ${input.generatedAt}`,
     `GitコミットID: ${input.gitCommitId ?? "取得できませんでした"}`,
+    `調査CLI: ${input.provider === "codex" ? "Codex" : "Gemini"} (${input.cliVersion})`,
     "",
     "## 関連コードツリー",
     "",
@@ -322,7 +328,7 @@ function renderOverview(
       "",
       "## 機能要約",
       "",
-      input.investigation.overview || "Geminiから機能全体の要約は返されませんでした。",
+      input.investigation.overview || "AI CLIから機能全体の要約は返されませんでした。",
       "",
       "### 主要コンポーネントとファイル別要約",
       "",
@@ -350,7 +356,7 @@ function initialOmissions(
     reason:
       record.exclusionReason ??
       (!record.included
-        ? "ユーザーまたはGeminiの選択によりコード連結の対象外"
+        ? "ユーザーまたはAI CLIの選択によりコード連結の対象外"
         : !concat
           ? "コード連結オプションが無効"
           : maxOutputFiles <= 1

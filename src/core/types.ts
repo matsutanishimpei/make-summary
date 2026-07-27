@@ -1,6 +1,7 @@
 export type Priority = "core" | "supporting" | "test";
+export type AiProvider = "gemini" | "codex";
 
-export interface GeminiFile {
+export interface InvestigationFile {
   path: string;
   role: string;
   reason: string;
@@ -14,26 +15,30 @@ export interface Investigation {
   feature: string;
   overview?: string;
   flow: string[];
-  files: GeminiFile[];
+  files: InvestigationFile[];
   uncertainties: string[];
 }
 
-export interface GeminiInfo {
+export interface CliInfo {
+  provider: AiProvider;
   version: string;
   help: string;
 }
 
-export interface GeminiRunRequest {
+export interface InvestigationRunRequest {
   projectRoot: string;
   prompt: string;
   timeoutMs: number;
   signal?: AbortSignal;
 }
 
-export interface GeminiRunner {
-  inspect(signal?: AbortSignal): Promise<GeminiInfo>;
-  investigate(request: GeminiRunRequest): Promise<Investigation>;
+export interface InvestigationRunner {
+  readonly provider: AiProvider;
+  inspect(signal?: AbortSignal): Promise<CliInfo>;
+  investigate(request: InvestigationRunRequest): Promise<Investigation>;
 }
+
+export type RunnerResolver = (provider: AiProvider) => InvestigationRunner;
 
 export type ProgressStage =
   | "checking-cli"
@@ -50,6 +55,7 @@ export interface ProgressEvent {
 }
 
 export interface BuildOptions {
+  provider?: AiProvider;
   projectRoot: string;
   feature: string;
   outputDir?: string;
@@ -66,7 +72,7 @@ export interface BuildOptions {
   selections?: Record<string, boolean>;
 }
 
-export interface ValidationRecord extends GeminiFile {
+export interface ValidationRecord extends InvestigationFile {
   normalizedPath?: string;
   valid: boolean;
   included: boolean;
@@ -94,19 +100,23 @@ export interface BundleArtifact {
 }
 
 export interface Manifest {
-  schemaVersion: "1.0";
+  schemaVersion: "1.1";
   feature: string;
   projectRoot: string;
   generatedAt: string;
   gitCommitId: string | null;
   options: {
+    provider: AiProvider;
     summary: boolean;
     concat: boolean;
     maxOutputFiles: number;
     maxTotalChars: number;
     maxFileChars: number;
   };
-  geminiCliVersion: string;
+  provider: {
+    id: AiProvider;
+    cliVersion: string;
+  };
   investigation: Investigation;
   relatedFiles: ValidationRecord[];
   validation: {
