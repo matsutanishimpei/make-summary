@@ -4,7 +4,7 @@
 
 ローカル機能探索は、コード全文を最初から外部AIへ渡さず、PC内で「どのファイルが指定機能に関係しそうか」を絞るためのcoreです。
 
-現在の段階では、安全なファイル走査、構造化コメント、通常コメント、シンボルの索引、project内importグラフ、根拠付き順位付けを提供します。今後、CLIと多言語Embeddingを同じcoreへ追加します。
+現在の段階では、安全なファイル走査、構造化コメント、通常コメント、シンボルの索引、project内importグラフ、根拠付き順位付け、同じcoreを直接利用する薄いCLIを提供します。次の段階で多言語Embeddingを同じcoreへ追加します。
 
 ```mermaid
 flowchart LR
@@ -23,6 +23,7 @@ flowchart LR
     Index --> Rank["根拠ごとのscore"]
     Dependencies --> Rank
     Rank --> Candidates["説明可能な候補順"]
+    Candidates --> CLI["feature-discovery CLI<br/>text / JSON"]
 ```
 
 ## 索引に入る情報
@@ -139,3 +140,32 @@ tsconfig path alias、webpack alias、動的に組み立てたimport、実行時
 ### Gemini APIとの接続
 
 Gemini API用project snapshotはこの順位を使って本文を詰めます。パス一覧と各本文headerには`local_score`と上位の根拠を付けます。Geminiはローカルで選ばれた順序と理由を確認したうえで最終調査を行います。
+
+## feature-discovery CLI
+
+CLIは`discoverFeature(projectRoot, feature, options, signal)`をそのまま呼ぶinterface adapterです。別の探索処理やAI呼び出しを持ちません。
+
+```mermaid
+flowchart LR
+    Args["feature・root・上限"] --> CLI["discovery-cli"]
+    CLI --> Facade["discoverFeature"]
+    Facade --> Index["DiscoveryIndex"]
+    Facade --> Graph["ImportGraph"]
+    Facade --> Rank["DiscoveryRanking"]
+    Rank --> Text["text + 根拠"]
+    Rank --> JSON["schemaVersion 1.0 JSON"]
+```
+
+```powershell
+node dist/node/discovery-cli/index.js "ログイン機能" --root . --max 20 --explain
+node dist/node/discovery-cli/index.js "通知機能" --root . --format json
+```
+
+- `text`は候補path、score、relationを表示し、`--explain`で根拠を展開する
+- `json`はquery、候補、根拠、未解決import、警告を機械可読で返す
+- どちらもsource sampleやコード本文を出力しない
+- ファイルを書き込まず、外部AIやネットワークを呼ばない
+- SIGINT / SIGTERMを`AbortSignal`として走査へ伝える
+- ファイル数、総byte、1ファイルbyteの安全上限をCLIから狭められる
+
+`runFeatureDiscoveryCli(argv, dependencies)`は出力先、現在ディレクトリ、探索関数、`AbortSignal`を差し替えられるため、実AIやグローバルCLIを使わずにテストできます。

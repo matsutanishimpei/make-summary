@@ -6,7 +6,8 @@
   "description": "Gemini CLI・Gemini API・Codex CLIを利用し、PCまたはスマホから機能単位のコードコンテキストを生成するツール",
   "main": "dist/node/main/main.js",
   "bin": {
-    "feature-context": "dist/node/cli/index.js"
+    "feature-context": "dist/node/cli/index.js",
+    "feature-discovery": "dist/node/discovery-cli/index.js"
   },
   "scripts": {
     "dev": "npm run build && electron .",

@@ -17,6 +17,7 @@
   "include": [
     "src/core/**/*.ts",
     "src/discovery/**/*.ts",
+    "src/discovery-cli/**/*.ts",
     "src/gateway/**/*.ts",
     "src/cli/**/*.ts",
     "src/main/**/*.ts",

@@ -218,9 +218,10 @@ flowchart LR
     Discovery --> Rank["Explainable Ranker"]
     Traverse --> Rank
     Rank --> Snapshot["Gemini API snapshot"]
+    Rank --> DiscoveryCLI["feature-discovery CLI"]
 ```
 
-索引と順位付けはローカルだけで行います。完全な構文解析ではなく候補発見用の軽量索引であり、AI送信やbundle収集の直前には既存の安全検証を再実行します。Gemini APIへ渡すパス一覧と本文headerにはlocal scoreと主要根拠を付けます。詳しい点数、データ、上限は[ローカル機能探索](local-discovery.md)に記載します。
+索引と順位付けはローカルだけで行います。完全な構文解析ではなく候補発見用の軽量索引であり、AI送信やbundle収集の直前には既存の安全検証を再実行します。Gemini APIへ渡すパス一覧と本文headerにはlocal scoreと主要根拠を付けます。`feature-discovery` CLIはこのcoreを直接呼ぶだけのinterface adapterで、コード本文の出力、AI送信、成果物の書き込みを行いません。詳しい点数、データ、上限、CLI IFは[ローカル機能探索](local-discovery.md)に記載します。
 
 ## 4. モジュール間の関係
 
@@ -231,7 +232,8 @@ flowchart LR
 | `contracts` | 既定値、プロバイダーカタログ、Desktop DTO、manifest検証 | main、renderer、mobile、core、CLI | 型定義と小さな検証関数 |
 | `application` | 調査生成、bundle再構築、ジョブ状態管理、Port定義 | main、gateway、CLI | core、contracts、Port |
 | `core` | AI runner、応答解析、検証、収集、tree、bundle | application | Node標準機能、contracts |
-| `discovery` | 構造化comment、symbol、import graph、query展開、説明可能な順位付け | core、将来のdiscovery CLI | coreの安全検証、Node標準機能 |
+| `discovery` | 構造化comment、symbol、import graph、query展開、説明可能な順位付け | core、discovery CLI | coreの安全検証、Node標準機能 |
+| `discovery-cli` | ローカル探索の引数、text / JSON整形、キャンセル | 利用者・CI・自動化 | discoveryの公開façade |
 | `infrastructure` | ファイルシステム、Gitを使うPort実装 | applicationのcomposition root | applicationのPort、core |
 | `main` | Electron、IPC、OS機能、資格情報、Tailscale | renderer | application、gateway、infrastructure |
 | `gateway` | スマホHTTP、認証、登録プロジェクト、SSE、成果物配信 | mobile、main | application、coreの公開型 |

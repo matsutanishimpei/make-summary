@@ -196,6 +196,33 @@ feature-context "ログイン機能" --root . --summary --concat
 
 Ctrl+C / SIGTERM でキャンセルすると、実行中のAI CLI子プロセスまたはGemini APIのHTTP要求も終了します。Gemini APIキーは `GEMINI_API_KEY`、モデルの環境変数による既定値変更は `GEMINI_API_MODEL` でも指定できます。
 
+### ローカル探索専用CLI
+
+`feature-discovery`はAIを呼び出さず、成果物も書き込まずに、索引・importグラフ・根拠付き順位だけを確認する薄いCLIです。辞書や順位付けの調整、CI、自動化から共通の`discovery` coreを検証するときに使います。
+
+```powershell
+npm run build
+node dist/node/discovery-cli/index.js "ログイン機能" --root . --max 20 --explain
+node dist/node/discovery-cli/index.js "通知機能" --root . --format json
+
+# npm link後
+feature-discovery "ログイン機能" --root . --max 20 --explain
+```
+
+| オプション | 説明 | 既定値 |
+|---|---|---|
+| `--root <path>` | 探索対象プロジェクト | `.` |
+| `--max <n>` | 表示する最大候補数 | `50` |
+| `--depth <0-5>` | importの依存先・利用元をたどる深さ | `2` |
+| `--min-score <n>` | 表示する最低スコア | `0` |
+| `--format <text\|json>` | 人向けまたは機械可読の出力 | `text` |
+| `--explain` | text出力に加点・減点の根拠を表示 | 無効 |
+| `--max-files <n>` | 走査ファイル数上限 | `25000` |
+| `--max-scan-bytes <n>` | 合計走査byte上限 | `268435456` |
+| `--max-file-bytes <n>` | 索引用に読む1ファイルの上限 | `262144` |
+
+JSONにもソース本文は含みません。`feature-context`はAI調査からbundle生成までを行う製品CLI、`feature-discovery`はローカル候補発見だけを行う開発・自動化用CLIです。
+
 ## 出力構造
 
 ```text
