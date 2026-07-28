@@ -1,5 +1,5 @@
-import { app, BrowserWindow } from "electron";
-import { mkdtempSync, rmSync } from "node:fs";
+import { app, BrowserWindow, ipcMain } from "electron";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,21 @@ const timer = setTimeout(() => {
 }, 15_000);
 
 app.whenReady().then(async () => {
+  ipcMain.handle("mobile:status", () => ({
+    ok: true,
+    value: {
+      enabled: false,
+      running: false,
+      port: 43127,
+      localUrl: "http://127.0.0.1:43127",
+      publicUrl: "",
+      projects: [],
+      pairedDevices: [],
+      hasGeminiApiKey: false,
+      autoStart: false,
+      tailscale: { installed: false, connected: false }
+    }
+  }));
   const window = new BrowserWindow({
     show: false,
     webPreferences: {
@@ -34,17 +49,23 @@ app.whenReady().then(async () => {
     const state = await window.webContents.executeJavaScript(`({
       title: document.querySelector("h1")?.textContent,
       api: typeof window.featureContext?.start,
+      remoteApi: typeof window.featureContext?.getRemoteStatus,
       generateButton: document.querySelector("button.primary")?.textContent?.trim(),
       providers: Array.from(document.querySelectorAll("#provider option")).map((option) => option.value)
     })`);
+    const mobileEntryExists = existsSync(path.join(__dirname, "../../mobile/index.html"));
     if (
       preloadFailure ||
       state.title !== "Feature Context Builder" ||
       state.api !== "function" ||
+      state.remoteApi !== "function" ||
       state.generateButton !== "コンテキストを生成" ||
-      JSON.stringify(state.providers) !== JSON.stringify(["gemini", "gemini-api", "codex"])
+      JSON.stringify(state.providers) !== JSON.stringify(["gemini", "gemini-api", "codex"]) ||
+      !mobileEntryExists
     ) {
-      throw new Error(`Unexpected renderer state: ${JSON.stringify(state)} ${preloadFailure}`);
+      throw new Error(
+        `Unexpected renderer state: ${JSON.stringify(state)} mobile=${mobileEntryExists} ${preloadFailure}`
+      );
     }
     process.stdout.write(`Electron smoke test passed: ${JSON.stringify(state)}\n`);
     clearTimeout(timer);

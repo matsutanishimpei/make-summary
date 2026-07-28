@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/renderer/App";
 import type { BuildResult } from "../../src/core/types";
+import type { GatewayStatus } from "../../src/gateway/types";
 
 const result: BuildResult = {
   outputDir: "C:\\project\\.feature-context\\login",
@@ -50,6 +51,23 @@ const result: BuildResult = {
   }
 };
 
+const gatewayStatus: GatewayStatus = {
+  enabled: false,
+  running: false,
+  port: 43127,
+  localUrl: "http://127.0.0.1:43127",
+  publicUrl: "",
+  projects: [],
+  pairedDevices: [],
+  hasGeminiApiKey: false,
+  autoStart: false,
+  tailscale: {
+    installed: false,
+    connected: false,
+    message: "not installed"
+  }
+};
+
 describe("App", () => {
   afterEach(cleanup);
 
@@ -66,7 +84,24 @@ describe("App", () => {
       onProgress: vi.fn().mockReturnValue(() => {}),
       readArtifact: vi.fn().mockResolvedValue("# overview"),
       openOutput: vi.fn().mockResolvedValue(undefined),
-      copyOverview: vi.fn().mockResolvedValue(undefined)
+      copyOverview: vi.fn().mockResolvedValue(undefined),
+      getRemoteStatus: vi.fn().mockResolvedValue(gatewayStatus),
+      setRemoteEnabled: vi.fn().mockResolvedValue({ ...gatewayStatus, enabled: true, running: true }),
+      registerRemoteProject: vi.fn().mockResolvedValue(gatewayStatus),
+      removeRemoteProject: vi.fn().mockResolvedValue(gatewayStatus),
+      revokeRemoteDevice: vi.fn().mockResolvedValue(gatewayStatus),
+      createRemotePairing: vi.fn().mockResolvedValue({
+        url: "https://pc.example.ts.net/#pair=secret",
+        expiresAt: "2026-01-01T00:05:00.000Z",
+        qrDataUrl: "data:image/png;base64,AA=="
+      }),
+      configureTailscale: vi.fn().mockResolvedValue(gatewayStatus),
+      saveRemoteGeminiApiKey: vi.fn().mockResolvedValue({
+        ...gatewayStatus,
+        hasGeminiApiKey: true
+      }),
+      clearRemoteGeminiApiKey: vi.fn().mockResolvedValue(gatewayStatus),
+      setAutoStart: vi.fn().mockResolvedValue(gatewayStatus)
     };
   });
 
@@ -120,6 +155,18 @@ describe("App", () => {
           geminiApiModel: "gemini-test"
         })
       )
+    );
+  });
+
+  it("現在のプロジェクトをスマホ利用へ登録できる", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "フォルダを選択" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("プロジェクトフォルダ")).toHaveValue("C:\\project")
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "現在のフォルダを登録" }));
+    await waitFor(() =>
+      expect(window.featureContext.registerRemoteProject).toHaveBeenCalledWith("C:\\project")
     );
   });
 });

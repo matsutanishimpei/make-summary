@@ -17,5 +17,5 @@
     "noEmit": true,
     "types": ["vite/client", "vitest/globals"]
   },
-  "include": ["src/renderer", "tests/gui"]
+  "include": ["src/renderer", "src/mobile", "tests/gui", "tests/mobile"]
 }

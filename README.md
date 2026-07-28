@@ -11,6 +11,7 @@ Feature Context Builder は、プロジェクトフォルダと「ログイン�
 - npm
 - Gemini CLI、Gemini APIキー、Codex CLIのいずれか（利用するものだけで構いません）
 - Git（コミットIDの記録に使用。Git管理外でも生成可能です）
+- Tailscale（スマートフォン連携を使う場合のみ。PCとスマートフォンの両方）
 
 ## Gemini CLIの準備
 
@@ -109,6 +110,33 @@ npm run dev
 
 既存成果物を上書きする場合、GUIは確認ダイアログを表示します。
 
+## スマートフォンから使う
+
+PCとスマートフォンに[Tailscale](https://tailscale.com/download)を入れ、同じアカウント（tailnet）へ接続すると、一般的な家庭回線やモバイル回線からも利用できます。ルーターのポート開放や固定IPは不要です。公開インターネットへは出さず、TailscaleのプライベートなHTTPS接続だけを使います。
+
+初回設定はPCのGUIで行います。
+
+1. 通常どおりプロジェクトフォルダを選ぶ
+2. 「スマホ連携」から「現在のプロジェクトを登録」
+3. Gemini APIをスマホから使う場合は、GUIへ入力済みのAPIキーを「暗号化してPCへ保存」
+4. 「Tailscale Serveを自動設定」を押す
+5. 「接続用QRコード」を表示し、スマートフォンで読み取る
+6. 必要なら「Windowsログイン時にバックグラウンド起動」を有効にする
+7. スマートフォンのブラウザで「ホーム画面に追加」するとPWAとして起動できる
+
+スマホ画面では、登録済みプロジェクトとGemini CLI / Gemini API / Codex CLIを選び、進捗確認、キャンセル、成果物プレビュー、Markdown保存・共有、ZIP保存、関連ソースの再選択、AIを再実行しないbundle再構築まで行えます。ブラウザの複数ファイル共有が使えない場合はZIP保存へ切り替えてください。
+
+PCアプリのウィンドウを閉じても、スマホ連携が有効ならタスクトレイで動作を続けます。スマホから使う間はPCが起動中かつスリープしておらず、Feature Context BuilderとTailscaleが動作している必要があります。終了する場合はタスクトレイのメニューから終了してください。
+
+Tailscale CLIを手動で確認する場合:
+
+```powershell
+tailscale status
+tailscale serve status
+```
+
+GUIが設定する転送は `tailscale serve --bg 43127` 相当です（ポートは設定値）。`tailscale funnel` は使用しません。詳しくは[Tailscale Serveの公式リファレンス](https://tailscale.com/docs/reference/tailscale-cli/serve)を参照してください。
+
 ## CLI
 
 ビルド後に次のように実行できます。
@@ -172,7 +200,16 @@ Ctrl+C / SIGTERM でキャンセルすると、実行中のAI CLI子プロセス
 React Renderer (Desktop GUI)
         │ IPC
 Electron Main
-        │
+  ├─ MobileGateway (127.0.0.1)
+  │    ├─ QR pairing / session
+  │    ├─ registered projects only
+  │    ├─ progress SSE / cancel / rebuild
+  │    └─ Markdown ZIP
+  │          │
+  │    Tailscale Serve (private HTTPS)
+  │          │
+  │    Mobile React PWA
+  │
 feature-context-core
   ├─ InvestigationRunner interface
   │    ├─ GeminiCliRunner
@@ -204,6 +241,13 @@ GUIのReactコンポーネントはAI呼び出しやファイルシステムを�
 - コード本文はAI CLIに再生成させず、検証済みの実ファイルを直接読みます。
 - 出力先はプロジェクト内だけに制限します。
 - 成果物は外部サービスへ自動送信されません。Gemini APIを選んだ場合だけ、調査用コード索引がGoogleへ送信されます。送付前にGUIの説明を確認してください。
+- スマホ用HTTPサーバーは `127.0.0.1` だけで待ち受け、Tailscale ServeがプライベートなHTTPSを終端します。
+- スマホはPCで事前登録したプロジェクトIDだけを選択でき、任意のパスや出力先を指定できません。
+- QRペアリング値は32バイトの乱数で、URLフラグメントに載せるためHTTPリクエストへ送信されず、5分・1回で失効します。
+- 端末セッション値はCookieへ `HttpOnly`、`Secure`、`SameSite=Strict` を設定し、PCにはSHA-256ハッシュだけを保存します。PCのGUIから端末ごとに失効できます。
+- スマホ用Gemini APIキーはスマホへ送らず、Electronの `safeStorage`（WindowsではOSの暗号化機能）でPCへ暗号化保存します。環境変数 `GEMINI_API_KEY` も利用できます。
+- スマホ向けZIPには `bundle` のMarkdownだけを含めます。絶対パスを含む内部管理用 `manifest.json` はPCに残します。
+- Tailscale Funnel、ルーターのポート開放、パブリックlisten、クラウド保存は行いません。
 
 ファイル名による基本的な秘密情報除外は行いますが、任意形式の埋め込みシークレットを完全には検出できません。成果物を共有する前に内容を確認してください。
 
@@ -216,7 +260,7 @@ npm run build
 npm run test:smoke
 ```
 
-テストは一時プロジェクト、`InvestigationRunner`、Gemini API HTTP通信のモックを使用し、実際のAI CLIやネットワークを呼びません。coreの正常系、プロバイダー選択、Codex JSONL解析、Gemini APIの構造化出力・補正再試行・認証エラー・利用上限・キャンセル、安全なコード索引、最大5件梱包、オプション、選択・再構築、危険パス、gitignore、秘密情報、バイナリ、不正JSON、CLI異常、タイムアウト、Windows日本語パス、文字数上限、コード一致、上書き防止を検証します。GUIは主要な初回入力、3プロバイダーの選択、Gemini APIキー・モデル入力、生成操作を検証します。`test:smoke` は非表示のElectronウィンドウを起動し、React画面とsandboxed preload IPCが実際に読み込まれることを確認します。
+テストは一時プロジェクト、`InvestigationRunner`、Gemini API HTTP通信のモックを使用し、実際のAI CLIや外部ネットワークを呼びません。coreの正常系、プロバイダー選択、Codex JSONL解析、Gemini APIの構造化出力・補正再試行・認証エラー・利用上限・キャンセル、安全なコード索引、最大5件梱包、オプション、選択・再構築、危険パス、gitignore、秘密情報、バイナリ、不正JSON、CLI異常、タイムアウト、Windows日本語パス、文字数上限、コード一致、上書き防止を検証します。スマホ連携は未認証拒否、1回限りのQRペアリング、登録プロジェクト制限、実coreを通した生成、MarkdownだけのZIPを検証します。GUIは主要な初回入力、3プロバイダーの選択、Gemini APIキー・モデル入力、生成操作、スマホ登録操作を検証します。`test:smoke` は非表示のElectronウィンドウを起動し、デスクトップ画面、モバイルIPC、ビルド済みPWAが実際に読み込まれることを確認します。
 
 ## 現在の制限事項
 
@@ -226,5 +270,9 @@ npm run test:smoke
 - GUIからAI CLIのタイムアウト値や追加除外パターンを変更する画面はありません。
 - Gemini APIへ送るコード本文は最大600,000文字です。超過分はパス一覧のみとなり、大規模リポジトリではCLIより調査精度が下がる場合があります。
 - Gemini APIの無料枠、利用可能モデル、レート制限、データ利用条件はGoogle側の設定と変更に依存します。
+- スマホ連携はPC上のプロセスを遠隔操作するため、PCの電源・ネットワーク・アプリ・Tailscaleのいずれかが停止すると利用できません。PCのスリープ解除機能は実装していません。
+- スマホのジョブ履歴はPCアプリのメモリ内に最大20件だけ保持し、PCアプリを終了すると消えます。生成済み成果物そのものは各プロジェクト内に残ります。
+- Web Share APIのファイル共有可否はOSとブラウザに依存します。未対応環境向けに個別MarkdownとZIPのダウンロードを用意しています。
+- Tailscaleのインストール、tailnetへのログイン、端末ポリシー設定は利用者が行う必要があります。
 - インストーラー生成、高度な配布署名、自動アップデートは未実装です。
 - Chrome拡張、ChatGPTの自動操作・送信、OpenAI API、クラウド保存、ソース編集・自動修正は実装しません。

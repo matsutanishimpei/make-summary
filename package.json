@@ -3,16 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Gemini CLIまたはCodex CLIを利用して機能単位のコードコンテキストを生成するデスクトップツール",
+  "description": "Gemini CLI・Gemini API・Codex CLIを利用し、PCまたはスマホから機能単位のコードコンテキストを生成するツール",
   "main": "dist/node/main/main.js",
   "bin": {
     "feature-context": "dist/node/cli/index.js"
   },
   "scripts": {
     "dev": "npm run build && electron .",
-    "build": "npm run typecheck && npm run build:node && npm run build:renderer",
+    "build": "npm run typecheck && npm run build:node && npm run build:renderer && npm run build:mobile",
     "build:node": "tsc -p tsconfig.node.json",
     "build:renderer": "vite build",
+    "build:mobile": "vite build --config vite.mobile.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
     "test:smoke": "electron dist/node/main/smoke.js",
@@ -23,7 +24,9 @@
   },
   "dependencies": {
     "commander": "^14.0.0",
+    "fflate": "^0.8.3",
     "ignore": "^7.0.5",
+    "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
@@ -31,6 +34,7 @@
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^24.1.0",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.9",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^4.7.0",

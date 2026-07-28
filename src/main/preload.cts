@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { BuildOptions, BuildResult, ProgressEvent, RebuildOptions } from "../core/types.js";
+import type { GatewayStatus, PairingInfo } from "../gateway/types.js";
 
 export interface DesktopApi {
   selectFolder(): Promise<string | null>;
@@ -10,6 +11,16 @@ export interface DesktopApi {
   readArtifact(filePath: string): Promise<string>;
   openOutput(outputDir: string): Promise<void>;
   copyOverview(filePath: string): Promise<void>;
+  getRemoteStatus(): Promise<GatewayStatus>;
+  setRemoteEnabled(enabled: boolean): Promise<GatewayStatus>;
+  registerRemoteProject(root: string, label?: string): Promise<GatewayStatus>;
+  removeRemoteProject(projectId: string): Promise<GatewayStatus>;
+  revokeRemoteDevice(sessionId: string): Promise<GatewayStatus>;
+  createRemotePairing(): Promise<PairingInfo>;
+  configureTailscale(): Promise<GatewayStatus>;
+  saveRemoteGeminiApiKey(apiKey: string): Promise<GatewayStatus>;
+  clearRemoteGeminiApiKey(): Promise<GatewayStatus>;
+  setAutoStart(enabled: boolean): Promise<GatewayStatus>;
 }
 
 const api: DesktopApi = {
@@ -25,7 +36,26 @@ const api: DesktopApi = {
   },
   readArtifact: (filePath) => ipcRenderer.invoke("artifact:read", filePath),
   openOutput: (outputDir) => ipcRenderer.invoke("shell:open-output", outputDir),
-  copyOverview: (filePath) => ipcRenderer.invoke("clipboard:copy-overview", filePath)
+  copyOverview: (filePath) => ipcRenderer.invoke("clipboard:copy-overview", filePath),
+  getRemoteStatus: async () => unwrap(await ipcRenderer.invoke("mobile:status")),
+  setRemoteEnabled: async (enabled) =>
+    unwrap(await ipcRenderer.invoke("mobile:set-enabled", enabled)),
+  registerRemoteProject: async (root, label) =>
+    unwrap(await ipcRenderer.invoke("mobile:register-project", root, label)),
+  removeRemoteProject: async (projectId) =>
+    unwrap(await ipcRenderer.invoke("mobile:remove-project", projectId)),
+  revokeRemoteDevice: async (sessionId) =>
+    unwrap(await ipcRenderer.invoke("mobile:revoke-device", sessionId)),
+  createRemotePairing: async () =>
+    unwrap(await ipcRenderer.invoke("mobile:create-pairing")),
+  configureTailscale: async () =>
+    unwrap(await ipcRenderer.invoke("mobile:configure-tailscale")),
+  saveRemoteGeminiApiKey: async (apiKey) =>
+    unwrap(await ipcRenderer.invoke("mobile:save-gemini-key", apiKey)),
+  clearRemoteGeminiApiKey: async () =>
+    unwrap(await ipcRenderer.invoke("mobile:clear-gemini-key")),
+  setAutoStart: async (enabled) =>
+    unwrap(await ipcRenderer.invoke("app:set-auto-start", enabled))
 };
 
 contextBridge.exposeInMainWorld("featureContext", api);

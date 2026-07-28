@@ -1,4 +1,14 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  shell,
+  Tray
+} from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,13 +19,25 @@ import {
   type BuildResult,
   type RebuildOptions
 } from "../core/index.js";
+import { RemoteController } from "./remote-controller.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jobs = new Map<string, AbortController>();
 const allowedFiles = new Set<string>();
 const allowedOutputs = new Set<string>();
+let mainWindow: BrowserWindow | undefined;
+let remoteController: RemoteController | undefined;
+let tray: Tray | undefined;
+let remoteEnabled = false;
+let isQuitting = false;
+const launchHidden = process.argv.includes("--hidden");
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    return mainWindow;
+  }
   const window = new BrowserWindow({
     width: 1220,
     height: 820,
@@ -35,19 +57,47 @@ function createWindow(): void {
   window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) =>
     callback(false)
   );
+  window.on("close", (event) => {
+    if (remoteEnabled && tray && !tray.isDestroyed() && !isQuitting) {
+      event.preventDefault();
+      window.hide();
+    }
+  });
+  window.on("closed", () => {
+    if (mainWindow === window) mainWindow = undefined;
+  });
   void window.loadFile(path.join(__dirname, "../../renderer/index.html"));
+  mainWindow = window;
+  return window;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  remoteController = new RemoteController({
+    userDataDir: app.getPath("userData"),
+    mobileStaticDir: path.join(__dirname, "../../mobile"),
+    onEnabledChanged: updateRemoteEnabled
+  });
+  try {
+    await remoteController.initialize();
+  } catch (error) {
+    process.stderr.write(
+      `スマホ連携サーバーの自動起動に失敗しました: ${error instanceof Error ? error.message : String(error)}\n`
+    );
+  }
   registerIpc();
-  createWindow();
+  if (!launchHidden || !remoteEnabled || !tray) createWindow();
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    createWindow();
   });
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin" && (!remoteEnabled || !tray)) app.quit();
+});
+
+app.on("before-quit", () => {
+  isQuitting = true;
+  void remoteController?.dispose();
 });
 
 function registerIpc(): void {
@@ -98,6 +148,70 @@ function registerIpc(): void {
     }
     clipboard.writeText(await fs.readFile(resolved, "utf8"));
   });
+
+  ipcMain.handle("mobile:status", () =>
+    safeInvoke(async () => requireRemoteController().status(getAutoStart()))
+  );
+
+  ipcMain.handle("mobile:set-enabled", (_event, enabled: boolean) =>
+    safeInvoke(async () => {
+      await requireRemoteController().setEnabled(enabled === true);
+      return requireRemoteController().status(getAutoStart());
+    })
+  );
+
+  ipcMain.handle("mobile:register-project", (_event, root: string, label?: string) =>
+    safeInvoke(async () => {
+      await requireRemoteController().registerProject(root, label);
+      return requireRemoteController().status(getAutoStart());
+    })
+  );
+
+  ipcMain.handle("mobile:remove-project", (_event, projectId: string) =>
+    safeInvoke(async () => {
+      await requireRemoteController().removeProject(projectId);
+      return requireRemoteController().status(getAutoStart());
+    })
+  );
+
+  ipcMain.handle("mobile:revoke-device", (_event, sessionId: string) =>
+    safeInvoke(async () => {
+      await requireRemoteController().revokeDevice(sessionId);
+      return requireRemoteController().status(getAutoStart());
+    })
+  );
+
+  ipcMain.handle("mobile:create-pairing", () =>
+    safeInvoke(async () => requireRemoteController().createPairing())
+  );
+
+  ipcMain.handle("mobile:configure-tailscale", () =>
+    safeInvoke(async () => {
+      await requireRemoteController().configureTailscale();
+      return requireRemoteController().status(getAutoStart());
+    })
+  );
+
+  ipcMain.handle("mobile:save-gemini-key", (_event, apiKey: string) =>
+    safeInvoke(async () => {
+      await requireRemoteController().saveGeminiApiKey(apiKey);
+      return requireRemoteController().status(getAutoStart());
+    })
+  );
+
+  ipcMain.handle("mobile:clear-gemini-key", () =>
+    safeInvoke(async () => {
+      await requireRemoteController().clearGeminiApiKey();
+      return requireRemoteController().status(getAutoStart());
+    })
+  );
+
+  ipcMain.handle("app:set-auto-start", (_event, enabled: boolean) =>
+    safeInvoke(async () => {
+      setAutoStart(enabled === true);
+      return requireRemoteController().status(getAutoStart());
+    })
+  );
 }
 
 async function runJob(
@@ -162,4 +276,63 @@ async function safeInvoke<T>(
   } catch (error) {
     return { ok: false, error: serializeError(error) };
   }
+}
+
+function requireRemoteController(): RemoteController {
+  if (!remoteController) throw new Error("スマホ連携の初期化が完了していません。");
+  return remoteController;
+}
+
+function updateRemoteEnabled(enabled: boolean): void {
+  remoteEnabled = enabled;
+  if (enabled) ensureTray();
+  else {
+    tray?.destroy();
+    tray = undefined;
+  }
+}
+
+function ensureTray(): void {
+  if (tray && !tray.isDestroyed()) return;
+  try {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" rx="7" fill="#0c6b70"/><path d="M8 9h16v3H11v5h10v3H11v5H8z" fill="white"/></svg>`;
+    const icon = nativeImage
+      .createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`)
+      .resize({ width: 16, height: 16 });
+    tray = new Tray(icon);
+    tray.setToolTip("Feature Context Builder – スマホ連携中");
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: "Feature Context Builderを開く", click: () => createWindow() },
+        {
+          label: "終了",
+          click: () => {
+            isQuitting = true;
+            app.quit();
+          }
+        }
+      ])
+    );
+    tray.on("double-click", () => createWindow());
+  } catch (error) {
+    process.stderr.write(
+      `タスクトレイの初期化に失敗しました: ${error instanceof Error ? error.message : String(error)}\n`
+    );
+  }
+}
+
+function loginItemOptions(openAtLogin?: boolean): Electron.Settings {
+  return {
+    ...(openAtLogin === undefined ? {} : { openAtLogin }),
+    path: process.execPath,
+    args: app.isPackaged ? ["--hidden"] : [app.getAppPath(), "--hidden"]
+  };
+}
+
+function getAutoStart(): boolean {
+  return app.getLoginItemSettings(loginItemOptions()).openAtLogin;
+}
+
+function setAutoStart(enabled: boolean): void {
+  app.setLoginItemSettings(loginItemOptions(enabled));
 }

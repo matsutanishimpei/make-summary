@@ -7,6 +7,7 @@ import type {
   ProgressStage,
   ValidationRecord
 } from "../core/types";
+import type { GatewayStatus, PairingInfo } from "../gateway/types";
 
 const baseProgressSteps: Array<{ stage: ProgressStage; label: string }> = [
   { stage: "checking-cli", label: "AI CLIを確認中" },
@@ -37,6 +38,11 @@ export function App() {
   const [preview, setPreview] = useState<{ name: string; content: string } | null>(null);
   const [error, setError] = useState<{ message: string; details?: string } | null>(null);
   const [notice, setNotice] = useState("");
+  const [remoteStatus, setRemoteStatus] = useState<GatewayStatus | null>(null);
+  const [pairing, setPairing] = useState<PairingInfo | null>(null);
+  const [remoteBusy, setRemoteBusy] = useState(false);
+  const [remoteError, setRemoteError] = useState("");
+  const [remoteNotice, setRemoteNotice] = useState("");
 
   useEffect(
     () =>
@@ -71,6 +77,10 @@ export function App() {
       maxChars
     ]
   );
+
+  useEffect(() => {
+    void refreshRemoteStatus();
+  }, []);
   const providerName =
     provider === "codex" ? "Codex CLI" : provider === "gemini-api" ? "Gemini API" : "Gemini CLI";
   const progressSteps = baseProgressSteps.map((step) =>
@@ -177,6 +187,44 @@ export function App() {
     if (!overview) return;
     await window.featureContext.copyOverview(overview.path);
     setNotice("01-overview.mdをクリップボードへコピーしました。");
+  }
+
+  async function refreshRemoteStatus() {
+    try {
+      setRemoteStatus(await window.featureContext.getRemoteStatus());
+    } catch (caught) {
+      setRemoteError(normalizeError(caught).message);
+    }
+  }
+
+  async function remoteAction(
+    operation: () => Promise<GatewayStatus>,
+    successMessage?: string
+  ) {
+    setRemoteBusy(true);
+    setRemoteError("");
+    setRemoteNotice("");
+    try {
+      setRemoteStatus(await operation());
+      if (successMessage) setRemoteNotice(successMessage);
+    } catch (caught) {
+      const problem = normalizeError(caught);
+      setRemoteError(problem.details ? `${problem.message}\n${problem.details}` : problem.message);
+    } finally {
+      setRemoteBusy(false);
+    }
+  }
+
+  async function createPairing() {
+    setRemoteBusy(true);
+    setRemoteError("");
+    try {
+      setPairing(await window.featureContext.createRemotePairing());
+    } catch (caught) {
+      setRemoteError(normalizeError(caught).message);
+    } finally {
+      setRemoteBusy(false);
+    }
   }
 
   const currentStep = progressSteps.findIndex((item) => item.stage === progress?.stage);
@@ -400,6 +448,58 @@ export function App() {
             onRebuild={rebuild}
           />
         )}
+
+        <RemotePanel
+          status={remoteStatus}
+          projectRoot={projectRoot}
+          geminiApiKey={geminiApiKey}
+          busy={remoteBusy}
+          error={remoteError}
+          notice={remoteNotice}
+          pairing={pairing}
+          onClosePairing={() => setPairing(null)}
+          onRefresh={refreshRemoteStatus}
+          onToggle={(enabled) =>
+            remoteAction(
+              () => window.featureContext.setRemoteEnabled(enabled),
+              enabled ? "スマホ連携サーバーを起動しました。" : "スマホ連携サーバーを停止しました。"
+            )
+          }
+          onConfigureTailscale={() =>
+            remoteAction(
+              () => window.featureContext.configureTailscale(),
+              "Tailscale Serveを設定しました。QRコードでスマホを登録できます。"
+            )
+          }
+          onRegisterProject={() =>
+            remoteAction(
+              () => window.featureContext.registerRemoteProject(projectRoot),
+              "現在のプロジェクトをスマホ利用に登録しました。"
+            )
+          }
+          onRemoveProject={(projectId) =>
+            remoteAction(() => window.featureContext.removeRemoteProject(projectId))
+          }
+          onPair={createPairing}
+          onRevoke={(sessionId) =>
+            remoteAction(() => window.featureContext.revokeRemoteDevice(sessionId))
+          }
+          onSaveKey={() =>
+            remoteAction(
+              () => window.featureContext.saveRemoteGeminiApiKey(geminiApiKey),
+              "Gemini APIキーをWindowsの暗号化機能で保存しました。"
+            )
+          }
+          onClearKey={() =>
+            remoteAction(
+              () => window.featureContext.clearRemoteGeminiApiKey(),
+              "保存済みGemini APIキーを削除しました。"
+            )
+          }
+          onAutoStart={(enabled) =>
+            remoteAction(() => window.featureContext.setAutoStart(enabled))
+          }
+        />
       </main>
 
       {preview && (
@@ -414,6 +514,195 @@ export function App() {
         </div>
       )}
     </div>
+  );
+}
+
+interface RemotePanelProps {
+  status: GatewayStatus | null;
+  projectRoot: string;
+  geminiApiKey: string;
+  busy: boolean;
+  error: string;
+  notice: string;
+  pairing: PairingInfo | null;
+  onClosePairing: () => void;
+  onRefresh: () => void;
+  onToggle: (enabled: boolean) => void;
+  onConfigureTailscale: () => void;
+  onRegisterProject: () => void;
+  onRemoveProject: (projectId: string) => void;
+  onPair: () => void;
+  onRevoke: (sessionId: string) => void;
+  onSaveKey: () => void;
+  onClearKey: () => void;
+  onAutoStart: (enabled: boolean) => void;
+}
+
+function RemotePanel(props: RemotePanelProps) {
+  const status = props.status;
+  return (
+    <section className="panel remote-panel" aria-labelledby="remote-title">
+      <div className="section-heading">
+        <div><span className="step-number">REMOTE</span><h2 id="remote-title">スマホ連携</h2></div>
+        <p>登録済みプロジェクトだけを、Tailscale経由でスマートフォンから操作します。</p>
+      </div>
+
+      {!status ? (
+        <div className="remote-loading">
+          <span>スマホ連携の状態を確認しています。</span>
+          <button type="button" className="text-button" onClick={props.onRefresh}>再確認</button>
+        </div>
+      ) : (
+        <>
+          <div className="remote-status-grid">
+            <div>
+              <span>ローカルサーバー</span>
+              <strong className={status.running ? "ok-text" : ""}>
+                {status.running ? "起動中" : "停止中"}
+              </strong>
+              <small>{status.localUrl}</small>
+            </div>
+            <div>
+              <span>Tailscale</span>
+              <strong className={status.tailscale.connected ? "ok-text" : ""}>
+                {!status.tailscale.installed
+                  ? "未インストール"
+                  : status.tailscale.connected
+                    ? "接続済み"
+                    : "未接続"}
+              </strong>
+              <small>{status.tailscale.dnsName ?? status.tailscale.message ?? "状態を取得できません"}</small>
+            </div>
+            <div>
+              <span>スマホ用URL</span>
+              <strong className={status.publicUrl ? "ok-text" : ""}>
+                {status.publicUrl ? "準備済み" : "未設定"}
+              </strong>
+              <small>{status.publicUrl || "Tailscale Serveを設定してください"}</small>
+            </div>
+          </div>
+
+          <div className="remote-primary-actions">
+            <button
+              type="button"
+              className={status.enabled ? "danger-quiet" : "secondary"}
+              onClick={() => props.onToggle(!status.enabled)}
+              disabled={props.busy}
+            >
+              {status.enabled ? "スマホ連携を停止" : "スマホ連携を起動"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={props.onConfigureTailscale}
+              disabled={props.busy}
+            >
+              Tailscale Serveを自動設定
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={props.onPair}
+              disabled={props.busy || !status.running || !status.publicUrl}
+            >
+              スマホ登録用QRを表示
+            </button>
+          </div>
+
+          <label className="remote-switch">
+            <input
+              type="checkbox"
+              checked={status.autoStart}
+              onChange={(event) => props.onAutoStart(event.target.checked)}
+              disabled={props.busy}
+            />
+            Windowsログイン時に自動起動し、スマホ連携を待ち受ける
+          </label>
+
+          <div className="remote-columns">
+            <div className="remote-box">
+              <div className="remote-box-heading">
+                <div><h3>利用可能なプロジェクト</h3><p>スマホから任意パスは指定できません。</p></div>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={props.onRegisterProject}
+                  disabled={props.busy || !props.projectRoot.trim()}
+                >
+                  現在のフォルダを登録
+                </button>
+              </div>
+              {status.projects.length ? (
+                <ul className="remote-list">
+                  {status.projects.map((project) => (
+                    <li key={project.id}>
+                      <div><strong>{project.label}</strong><small>{project.root}</small></div>
+                      <button type="button" className="text-button" onClick={() => props.onRemoveProject(project.id)} disabled={props.busy}>解除</button>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="remote-empty">まだ登録されていません。</p>}
+            </div>
+
+            <div className="remote-box">
+              <div className="remote-box-heading">
+                <div><h3>Gemini APIキー</h3><p>スマホへは送らず、PCで暗号化保存します。</p></div>
+              </div>
+              <p className={status.hasGeminiApiKey ? "credential-ok" : "remote-empty"}>
+                {status.hasGeminiApiKey ? "保存済み（または環境変数で設定済み）" : "未保存"}
+              </p>
+              <div className="inline-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={props.onSaveKey}
+                  disabled={props.busy || !props.geminiApiKey.trim()}
+                >
+                  上のAPIキーを安全に保存
+                </button>
+                {status.hasGeminiApiKey && (
+                  <button type="button" className="danger-quiet" onClick={props.onClearKey} disabled={props.busy}>削除</button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="remote-box paired-devices">
+            <h3>登録済みスマートフォン</h3>
+            {status.pairedDevices.length ? (
+              <ul className="remote-list">
+                {status.pairedDevices.map((device) => (
+                  <li key={device.id}>
+                    <div>
+                      <strong>{device.deviceName}</strong>
+                      <small>最終利用: {new Date(device.lastUsedAt).toLocaleString("ja-JP")}</small>
+                    </div>
+                    <button type="button" className="text-button" onClick={() => props.onRevoke(device.id)} disabled={props.busy}>接続解除</button>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="remote-empty">登録済み端末はありません。</p>}
+          </div>
+        </>
+      )}
+
+      {props.error && <div className="error-box remote-message"><pre>{props.error}</pre></div>}
+      {props.notice && <div className="notice">{props.notice}</div>}
+
+      {props.pairing && (
+        <div className="preview-backdrop" role="dialog" aria-modal="true" aria-labelledby="pairing-title">
+          <section className="pairing-dialog">
+            <header>
+              <div><h2 id="pairing-title">スマホでQRコードを読み取る</h2><p>5分以内に読み取ってください。コードは一度だけ使えます。</p></div>
+              <button type="button" className="icon-button" onClick={props.onClosePairing} aria-label="QRコードを閉じる">×</button>
+            </header>
+            <img src={props.pairing.qrDataUrl} alt="スマホ登録用QRコード" />
+            <code>{props.pairing.url}</code>
+            <small>有効期限: {new Date(props.pairing.expiresAt).toLocaleString("ja-JP")}</small>
+          </section>
+        </div>
+      )}
+    </section>
   );
 }
 
