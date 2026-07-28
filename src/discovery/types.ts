@@ -1,10 +1,10 @@
 /**
  * @feature-context
- * @feature feature discovery, 構造化コメント, symbol index, import graph, explainable ranking
- * @role ローカル機能探索で共有する索引・graph・query・順位付け結果の契約を定義する
- * @entry StructuredFileComment, DiscoveryIndex, ImportGraph, DiscoveryRanking
- * @flow source files -> discovery index -> import graph -> explainable ranker
- * @related structured-comments.ts, file-index.ts, import-graph.ts, query.ts, ranker.ts
+ * @feature feature discovery, 構造化コメント, symbol index, import graph, multilingual embedding, explainable ranking
+ * @role ローカル機能探索で共有する索引・graph・query・Embedding・順位付け結果の契約を定義する
+ * @entry StructuredFileComment, DiscoveryIndex, ImportGraph, EmbeddingProvider, DiscoveryRanking
+ * @flow source files -> discovery index -> embedding + import graph -> explainable ranker
+ * @related structured-comments.ts, file-index.ts, import-graph.ts, query.ts, embedding.ts, ranker.ts
  * @caution 永続化する場合はschema versionを追加して互換性を管理する
  */
 
@@ -158,6 +158,7 @@ export type RankingEvidenceKind =
   | "comment"
   | "import"
   | "content"
+  | "semantic"
   | "source-layout"
   | "small-file"
   | "test-file"
@@ -189,7 +190,21 @@ export interface DiscoveryRanking {
   files: RankedDiscoveryFile[];
   directMatchCount: number;
   graphMatchCount: number;
+  embedding?: DiscoveryEmbeddingSummary;
   warnings: string[];
+}
+
+export interface EmbeddingProvider {
+  readonly id: string;
+  readonly dimensions: number;
+  embed(texts: string[], signal?: AbortSignal): Promise<number[][]>;
+}
+
+export interface DiscoveryEmbeddingSummary {
+  provider: string;
+  dimensions: number;
+  threshold: number;
+  matchedFiles: number;
 }
 
 export interface DiscoveryRankingOptions {
@@ -197,6 +212,9 @@ export interface DiscoveryRankingOptions {
   minScore?: number;
   graphDepth?: number;
   maxGraphSeeds?: number;
+  embedding?: EmbeddingProvider | false;
+  semanticWeight?: number;
+  semanticThreshold?: number;
 }
 
 export interface DiscoverFeatureOptions {
