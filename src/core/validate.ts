@@ -1,10 +1,27 @@
+/**
+ * @feature-context
+ * @feature safe file validation, feature discovery, secret exclusion
+ * @role プロジェクト外参照・生成物・秘密情報path・binaryをcore境界で拒否する
+ * @entry validateRelatedFiles, matchesBuiltInExclusion, readVerifiedProjectFile
+ * @flow AI candidate or local index path -> normalize -> exclusion -> realpath verification
+ * @related gitignore.ts, secrets.ts, discovery/file-index.ts
+ * @caution .feature-contextを含む生成成果物は再調査・API送信対象へ戻さない
+ */
+
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { FeatureContextError } from "./errors.js";
 import { GitIgnoreResolver } from "./gitignore.js";
 import type { InvestigationFile, ValidationRecord } from "./types.js";
 
-export const blockedDirectories = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
+export const blockedDirectories = new Set([
+  "node_modules",
+  ".git",
+  ".feature-context",
+  "dist",
+  "build",
+  "coverage"
+]);
 export const blockedExactNames = new Set([".env", "id_rsa", "id_ed25519"]);
 export const blockedExtensions = new Set([".pem", ".key", ".p12", ".pfx"]);
 

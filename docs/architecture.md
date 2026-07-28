@@ -200,6 +200,21 @@ manifestは読み込み時に実行時検証し、旧Gemini CLI専用形式は�
 
 bundleを一時的な画面表示ではなくファイルとして残すことには、費用面の設計理由もあります。仕様が変わるたびに開発エージェントへリポジトリを再探索させず、同じ検証済みbundleをブラウザAIとの複数回の対話で再利用できます。収録ソースだけを変えたい場合も、manifestからAIなしで再構築できます。これにより、開発エージェントのトークンは仕様確定後の実装とテストへ集中できます。
 
+### 3.9 ローカル機能探索core
+
+外部AIへコードを渡す前に、プロジェクト内で安全なシンボル・コメント索引を作ります。構造化コメント、通常コメント、docstring、class、function、typeなどを共通の`DiscoveryIndex`へ変換します。
+
+```mermaid
+flowchart LR
+    Project["local project"] --> Guard["gitignore・secret・binary・生成物除外"]
+    Guard --> Comment["structured / normal comments"]
+    Guard --> Symbol["class / function / type"]
+    Comment --> Discovery["DiscoveryIndex"]
+    Symbol --> Discovery
+```
+
+索引はローカルだけで作られ、外部送信を行いません。完全な構文解析ではなく候補発見用の軽量索引であり、AI送信やbundle収集の直前には既存の安全検証を再実行します。詳しいデータと上限は[ローカル機能探索](local-discovery.md)に記載します。
+
 ## 4. モジュール間の関係
 
 ### 4.1 ディレクトリ単位の責務
@@ -209,6 +224,7 @@ bundleを一時的な画面表示ではなくファイルとして残すこと�
 | `contracts` | 既定値、プロバイダーカタログ、Desktop DTO、manifest検証 | main、renderer、mobile、core、CLI | 型定義と小さな検証関数 |
 | `application` | 調査生成、bundle再構築、ジョブ状態管理、Port定義 | main、gateway、CLI | core、contracts、Port |
 | `core` | AI runner、応答解析、検証、収集、tree、bundle | application | Node標準機能、contracts |
+| `discovery` | 構造化comment、通常comment、symbolの安全なlocal index | core、将来のdiscovery CLI | coreの安全検証、Node標準機能 |
 | `infrastructure` | ファイルシステム、Gitを使うPort実装 | applicationのcomposition root | applicationのPort、core |
 | `main` | Electron、IPC、OS機能、資格情報、Tailscale | renderer | application、gateway、infrastructure |
 | `gateway` | スマホHTTP、認証、登録プロジェクト、SSE、成果物配信 | mobile、main | application、coreの公開型 |
