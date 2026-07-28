@@ -102,21 +102,34 @@ flowchart TB
         C16 --> C17["17 10f408e<br/>開発story"]
     end
 
+    subgraph P6["第6章 ローカル探索を第2の主機能へ"]
+        direction LR
+        C18["18 719c5ad<br/>token節約の意図"] --> C19["19 d8b50d1<br/>構造化comment"]
+        C19 --> C20["20 7788088<br/>symbol・comment索引"]
+        C20 --> C21["21 4f289b7<br/>import graph"]
+        C21 --> C22["22 9ad61d6<br/>説明可能な順位"]
+        C22 --> C23["23 5427162<br/>discovery CLI"]
+        C23 --> C24["24 a0e6584<br/>多言語Embedding"]
+    end
+
     C02 --> C03
     C05 --> C06
     C12 --> C13
     C14 --> C15
+    C17 --> C18
 
     classDef foundation fill:#e7f5f5,stroke:#0c6b70,color:#123;
     classDef feedback fill:#fff4df,stroke:#b56b00,color:#321;
     classDef mobile fill:#eaf0ff,stroke:#4169a1,color:#123;
     classDef quality fill:#f4eaff,stroke:#74479b,color:#213;
     classDef structure fill:#eaf7e8,stroke:#4c7d47,color:#123;
+    classDef discovery fill:#e8f4ff,stroke:#2878a8,color:#123;
     class C01,C02 foundation;
     class C03,C04,C05 feedback;
     class C06,C07,C08,C09,C10,C11,C12 mobile;
     class C13,C14 quality;
     class C15,C16 structure;
+    class C18,C19,C20,C21,C22,C23,C24 discovery;
 ```
 
 ## 4. 対話からcommitへ変わる流れ
@@ -145,6 +158,9 @@ flowchart TB
 
     Q7["保守性と拡張性を再考"] --> D7["動作が固まった後に<br/>use caseとadapterを分離"]
     D7 --> K7["af6a4e2 architecture refactor"]
+
+    Q8["順位付けこそ<br/>主機能では？"] --> D8["AI送信前の探索を<br/>独立coreへ育てる"]
+    D8 --> K8["d8b50d1 → a0e6584<br/>6段階のlocal discovery"]
 ```
 
 ## 5. commit一覧
@@ -168,6 +184,19 @@ flowchart TB
 | 15 | 7/28 19:33 | [`af6a4e2`](https://github.com/matsutanishimpei/make-summary/commit/af6a4e205c425ff46653b1c21d29d29c03abb0fe) | 機能を保ったまま保守・拡張しやすい構造へ移せるか |
 | 16 | 7/28 19:54 | [`ed003df`](https://github.com/matsutanishimpei/make-summary/commit/ed003dff1ecbb6cba792898ce7183cd280dbe5a9) | 技術判断とプロダクト価値を次の人へ説明できるか |
 | 17 | 7/28 20:06 | [`10f408e`](https://github.com/matsutanishimpei/make-summary/commit/10f408ebf74fada209d81e035c3904a49d0fba38) | 対話上の転機とcommit順の理由を一続きで追えるか |
+| 18 | 7/28 20:18 | [`719c5ad`](https://github.com/matsutanishimpei/make-summary/commit/719c5adf557a586016a339a537395c2b0c07911b) | ブラウザAIで仕様を固め、開発エージェントのtokenを実装へ集中する意図を明文化できるか |
+| 19 | 7/28 20:52 | [`d8b50d1`](https://github.com/matsutanishimpei/make-summary/commit/d8b50d1787d8f2bfd07497f919d92fa2dc95936d) | 機能と責務をfile自身へ検索可能な形で残せるか |
+| 20 | 7/28 20:53 | [`0a280a3`](https://github.com/matsutanishimpei/make-summary/commit/0a280a3e0b1de86d6e1f203721f6c7593642636c) | 構造化file commentを検証後にmainへ統合できるか |
+| 21 | 7/28 20:58 | [`7788088`](https://github.com/matsutanishimpei/make-summary/commit/7788088e2f6a2d74c27ec1cce5d4fdd63dc8b686) | commentとsymbolを秘密情報なしの共通索引へできるか |
+| 22 | 7/28 20:58 | [`8f5bfc0`](https://github.com/matsutanishimpei/make-summary/commit/8f5bfc07e88113f4d133acd14c0dc2ed7cab60a9) | 安全なsymbol・comment索引を検証後にmainへ統合できるか |
+| 23 | 7/28 21:03 | [`4f289b7`](https://github.com/matsutanishimpei/make-summary/commit/4f289b7c19c6ed4e29394ae7a56516af5c3f718a) | 名前一致だけでなくimport先と利用元をたどれるか |
+| 24 | 7/28 21:03 | [`c948322`](https://github.com/matsutanishimpei/make-summary/commit/c948322dce08e7a5324203ae5dc7401e1e574dea) | project内import graphを検証後にmainへ統合できるか |
+| 25 | 7/28 21:11 | [`9ad61d6`](https://github.com/matsutanishimpei/make-summary/commit/9ad61d6b26d1beb2229dce9ea9d34f53a5d32649) | なぜそのfileを選んだかを全加減点として説明できるか |
+| 26 | 7/28 21:11 | [`f4d2ec1`](https://github.com/matsutanishimpei/make-summary/commit/f4d2ec1369dd7ee32030105af198d3f51679709c) | 説明可能な順位をGemini APIの本文選定へ統合できるか |
+| 27 | 7/28 21:20 | [`5427162`](https://github.com/matsutanishimpei/make-summary/commit/5427162ed10d27f4141215cc3c9dde33e44fb799) | 同じ探索coreをAIなしの薄いCLIとして切り出せるか |
+| 28 | 7/28 21:20 | [`0a0c91d`](https://github.com/matsutanishimpei/make-summary/commit/0a0c91d024c2414febb8192a3a36bc22a5edf9a8) | discovery CLIを検証後にmainへ統合できるか |
+| 29 | 7/28 21:27 | [`a0e6584`](https://github.com/matsutanishimpei/make-summary/commit/a0e6584d162d3bae5a36006f7badb91e9e059bf3) | 日本語と英語の意味類似度をlocal・差し替え可能な根拠にできるか |
+| 30 | 7/28 21:27 | [`518134e`](https://github.com/matsutanishimpei/make-summary/commit/518134ea367273f3992544f4048bac653875303e) | 多言語Embeddingを全回帰後にmainへ統合できるか |
 
 ## 6. 第1章 — まず縦に一巡させる
 
@@ -639,3 +668,127 @@ git log --follow -- src/gateway/server.ts
 3. その結果、どの設計原則やmodule境界が変わったか
 
 これにより、履歴は完成したcodeの説明ではなく、次の判断に使えるproduct memoryになります。なお、この文書を更新するcommit自身のhashは確定前には書けないため、文書改訂commitは次回の更新時に一覧へ追加します。
+
+## 17. 第6章 — 「AIへ送る前の順位付け」を第2の主機能へ育てる
+
+### 17.1 転機は、送信量の説明から始まった
+
+Gemini APIへ何を送るかを確認する対話で、プロジェクト全体を無条件に送るのではなく、機能名との一致度で順位を付け、上限へ収まる本文だけを送る仕組みが見えました。そこで利用者から「むしろそれがメイン機能まである」という評価が生まれました。
+
+この発見で、ローカル順位付けはGemini API adapter内部の小さな前処理ではなくなりました。
+
+```mermaid
+flowchart LR
+    Before["以前<br/>API送信用の簡易絞り込み"] --> Insight["対話での発見<br/>順位付け自体に価値"]
+    Insight --> Core["独立した<br/>feature discovery core"]
+    Core --> API["Gemini APIの<br/>送信範囲選定"]
+    Core --> CLI["AIなしの<br/>feature-discovery CLI"]
+    Core --> Explain["人が確認できる<br/>根拠とscore"]
+```
+
+AIを呼ぶ前に候補を狭められれば、送信token、noise、待ち時間を同時に減らせます。また、AI CLIが使えない環境でも「関係しそうなfileと理由」まではPCだけで確認できます。これは最初の目的だった、ブラウザAIへ渡すcontextを小さく安全に作ることへ直接つながります。
+
+### 17.2 なぜ6段階をこの順番にしたか
+
+```mermaid
+flowchart TB
+    S1["1 構造化file comment<br/>人が責務と機能を宣言"] --> S2["2 symbol・comment索引<br/>検索可能な共通data"]
+    S2 --> S3["3 import graph<br/>入口から依存をたどる"]
+    S3 --> S4["4 説明可能なranking<br/>根拠を加減点として合成"]
+    S4 --> S5["5 薄いdiscovery CLI<br/>coreの独立価値を公開"]
+    S5 --> S6["6 多言語Embedding<br/>語彙差を意味類似度で補完"]
+```
+
+順序には次の理由があります。
+
+1. **構造化commentを先に置く**
+   機械推測だけに頼らず、人が知っている機能・責務・入口・flowを最も強い意味手掛かりとして用意しました。`AGENTS.md`に運用規則も置き、実装と説明のずれをレビュー可能にしました。
+
+2. **次にsymbol・commentを共通索引へする**
+   構造化commentがまだない既存fileも候補にする必要があります。安全走査、階層`.gitignore`、秘密情報、binary、生成物除外を共通入口にし、後続機能が各自でfile systemを読み直さない形にしました。
+
+3. **nodeが揃ってからimport graphを作る**
+   path解決より先に安全なfile集合を確定することで、graphがproject外や除外fileへ広がるのを防げます。直接一致した入口だけでなく、その依存先と利用元を区別してたどれるようになりました。
+
+4. **根拠が複数揃ってからrankingする**
+   pathだけで順位を決めず、comment、symbol、import、source配置、file size、test属性、graph距離を個別の`evidence`にしました。合計scoreは常にevidenceの和で、人とtestが選定理由を再計算できます。
+
+5. **coreが安定してからCLIを薄く載せる**
+   CLIを先に作ると、引数処理の都合がdomain設計へ入り込みます。`discoverFeature` façadeが固まってから、text / JSON整形だけを担うadapterを追加しました。JSONにsource本文を出さず、AIも成果物書き込みも行いません。
+
+6. **Embeddingを最後に加える**
+   意味類似度を最初に入れると「なぜ選ばれたか」が不透明になりやすく、効果の比較対象もありません。文字列・構造・graphの説明可能なbaselineを作った後、`semantic`をもう1つの明示的evidenceとして追加しました。標準実装は追加download不要の概念・subword hashingで、学習済みmodelではない限界も文書化しています。
+
+### 17.3 branchとmain統合の流れ
+
+各段階は独立branchで実装し、その段階の単体test、全test、型check、PC/スマホbuildを通してから`--no-ff`でmainへ統合しました。feature commitとmerge commitを分けたため、機能単位の差分と統合時点の両方をGit graphから追えます。
+
+```mermaid
+gitGraph
+    commit id: "719c5ad token意図"
+    branch structured-comments
+    checkout structured-comments
+    commit id: "d8b50d1 77 tests"
+    checkout main
+    merge structured-comments id: "0a280a3"
+    branch symbol-index
+    checkout symbol-index
+    commit id: "7788088 81 tests"
+    checkout main
+    merge symbol-index id: "8f5bfc0"
+    branch import-graph
+    checkout import-graph
+    commit id: "4f289b7 85 tests"
+    checkout main
+    merge import-graph id: "c948322"
+    branch explainable-ranking
+    checkout explainable-ranking
+    commit id: "9ad61d6 90 tests"
+    checkout main
+    merge explainable-ranking id: "f4d2ec1"
+    branch discovery-cli
+    checkout discovery-cli
+    commit id: "5427162 93 tests"
+    checkout main
+    merge discovery-cli id: "0a0c91d"
+    branch multilingual-embedding
+    checkout multilingual-embedding
+    commit id: "a0e6584 99 tests"
+    checkout main
+    merge multilingual-embedding id: "518134e"
+```
+
+| 段階 | Feature branch | Feature commit | Main merge | 到達した検証 |
+|---|---|---|---|---|
+| 構造化file comment | `feature/structured-file-comments` | `d8b50d1` | `0a280a3` | 77 tests、全build |
+| symbol・comment索引 | `feature/symbol-comment-index` | `7788088` | `8f5bfc0` | 81 tests、全build |
+| import graph | `feature/import-graph` | `4f289b7` | `c948322` | 85 tests、全build |
+| 説明可能なranking | `feature/explainable-ranking-core` | `9ad61d6` | `f4d2ec1` | 90 tests、全build |
+| feature-discovery CLI | `feature/feature-discovery-cli` | `5427162` | `0a0c91d` | 93 tests、全build、実CLI |
+| 多言語Embedding | `feature/multilingual-embedding` | `a0e6584` | `518134e` | 99 tests、全build、実CLI |
+
+各branchでREADMEまたは`docs`も同時に更新しました。構造化commentの運用規則だけを別日に後付けせず、実装と同じcommitへ含めたのは、codeと説明の寿命を揃えるためです。
+
+### 17.4 この段階で確定した境界
+
+```mermaid
+flowchart LR
+    Project["local project"] --> Guard["安全走査"]
+    Guard --> Index["DiscoveryIndex"]
+    Index --> Graph["ImportGraph"]
+    Index --> EmbedIF["EmbeddingProvider IF"]
+    Graph --> Rank["Explainable Ranker"]
+    EmbedIF --> Rank
+    Rank --> Facade["discoverFeature"]
+    Facade --> Snapshot["Gemini API snapshot"]
+    Facade --> ThinCLI["feature-discovery CLI"]
+```
+
+- `discovery`はAI provider、GUI、成果物形式を知らない
+- `EmbeddingProvider`はvector生成だけを担い、順位の決め方を知らない
+- rankerは意味類似度も特別扱いで隠さず、`semantic` evidenceとして返す
+- CLIはcoreを再実装せず、引数と表示だけを担う
+- Gemini API snapshotは同じ順位を利用するが、送信直前の安全検証を省略しない
+- GUIの調査生成は従来どおりapplication use caseを通り、discovery CLI操作を必須にしない
+
+この分離により、標準Embeddingを将来のローカルONNX modelへ交換する、別製品としてdiscovery CLIを配布する、GUIへ候補根拠の表示を追加するといった拡張を、秘密情報検証やbundle生成から独立して進められます。
