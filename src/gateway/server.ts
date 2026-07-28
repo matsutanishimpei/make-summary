@@ -87,19 +87,31 @@ export class MobileGateway {
     server.requestTimeout = 30_000;
     server.headersTimeout = 15_000;
     server.keepAliveTimeout = 5_000;
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => {
-        server.removeListener("listening", onListening);
-        reject(error);
-      };
-      const onListening = () => {
-        server.removeListener("error", onError);
-        resolve();
-      };
-      server.once("error", onError);
-      server.once("listening", onListening);
-      server.listen(port, this.host);
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onError = (error: Error) => {
+          server.removeListener("listening", onListening);
+          reject(error);
+        };
+        const onListening = () => {
+          server.removeListener("error", onError);
+          resolve();
+        };
+        server.once("error", onError);
+        server.once("listening", onListening);
+        server.listen(port, this.host);
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+        const conflict = new Error(
+          `スマホ連携用ポート${port}はすでに使用中です。タスクトレイに残っているFeature Context Builderを終了してから再実行してください。`
+        ) as Error & { code?: string; details?: string };
+        conflict.code = "EADDRINUSE";
+        conflict.details = `listen EADDRINUSE: ${this.host}:${port}`;
+        throw conflict;
+      }
+      throw error;
+    }
     this.server = server;
     const address = server.address();
     this.port = typeof address === "object" && address ? address.port : port;

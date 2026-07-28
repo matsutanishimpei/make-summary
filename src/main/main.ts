@@ -31,6 +31,7 @@ let tray: Tray | undefined;
 let remoteEnabled = false;
 let isQuitting = false;
 const launchHidden = process.argv.includes("--hidden");
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 function createWindow(): BrowserWindow {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -71,34 +72,43 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
-app.whenReady().then(async () => {
-  remoteController = new RemoteController({
-    userDataDir: app.getPath("userData"),
-    mobileStaticDir: path.join(__dirname, "../../mobile"),
-    onEnabledChanged: updateRemoteEnabled
-  });
-  try {
-    await remoteController.initialize();
-  } catch (error) {
-    process.stderr.write(
-      `スマホ連携サーバーの自動起動に失敗しました: ${error instanceof Error ? error.message : String(error)}\n`
-    );
-  }
-  registerIpc();
-  if (!launchHidden || !remoteEnabled || !tray) createWindow();
-  app.on("activate", () => {
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", async () => {
+    if (!app.isReady()) await app.whenReady();
     createWindow();
   });
-});
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin" && (!remoteEnabled || !tray)) app.quit();
-});
+  app.whenReady().then(async () => {
+    remoteController = new RemoteController({
+      userDataDir: app.getPath("userData"),
+      mobileStaticDir: path.join(__dirname, "../../mobile"),
+      onEnabledChanged: updateRemoteEnabled
+    });
+    try {
+      await remoteController.initialize();
+    } catch (error) {
+      process.stderr.write(
+        `スマホ連携サーバーの自動起動に失敗しました: ${error instanceof Error ? error.message : String(error)}\n`
+      );
+    }
+    registerIpc();
+    if (!launchHidden || !remoteEnabled || !tray) createWindow();
+    app.on("activate", () => {
+      createWindow();
+    });
+  });
 
-app.on("before-quit", () => {
-  isQuitting = true;
-  void remoteController?.dispose();
-});
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin" && (!remoteEnabled || !tray)) app.quit();
+  });
+
+  app.on("before-quit", () => {
+    isQuitting = true;
+    void remoteController?.dispose();
+  });
+}
 
 function registerIpc(): void {
   ipcMain.handle("dialog:select-folder", async () => {

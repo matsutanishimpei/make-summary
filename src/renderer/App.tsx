@@ -585,11 +585,11 @@ function RemotePanel(props: RemotePanelProps) {
           <div className="remote-primary-actions">
             <button
               type="button"
-              className={status.enabled ? "danger-quiet" : "secondary"}
-              onClick={() => props.onToggle(!status.enabled)}
+              className={status.running ? "danger-quiet" : "secondary"}
+              onClick={() => props.onToggle(!status.running)}
               disabled={props.busy}
             >
-              {status.enabled ? "スマホ連携を停止" : "スマホ連携を起動"}
+              {status.running ? "スマホ連携を停止" : "スマホ連携を起動"}
             </button>
             <button
               type="button"

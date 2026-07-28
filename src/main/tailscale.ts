@@ -5,6 +5,24 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+interface CommandOptions {
+  encoding: "utf8";
+  windowsHide: boolean;
+  timeout: number;
+  maxBuffer: number;
+}
+
+export type TailscaleCommandExecutor = (
+  executable: string,
+  args: string[],
+  options: CommandOptions
+) => Promise<{ stdout: string; stderr: string }>;
+
+export interface TailscaleServiceOptions {
+  executable?: string;
+  execute?: TailscaleCommandExecutor;
+}
+
 export interface TailscaleInfo {
   installed: boolean;
   connected: boolean;
@@ -13,10 +31,12 @@ export interface TailscaleInfo {
 }
 
 export class TailscaleService {
+  constructor(private readonly options: TailscaleServiceOptions = {}) {}
+
   async inspect(): Promise<TailscaleInfo> {
     let executable: string;
     try {
-      executable = resolveTailscaleExecutable();
+      executable = this.options.executable ?? resolveTailscaleExecutable();
     } catch (error) {
       return {
         installed: false,
@@ -25,7 +45,7 @@ export class TailscaleService {
       };
     }
     try {
-      const { stdout } = await execFileAsync(executable, ["status", "--json"], {
+      const { stdout } = await this.execute(executable, ["status", "--json"], {
         encoding: "utf8",
         windowsHide: true,
         timeout: 10_000,
@@ -60,26 +80,80 @@ export class TailscaleService {
   }
 
   async configureServe(port: number): Promise<{ publicUrl: string; output: string }> {
-    const executable = resolveTailscaleExecutable();
+    const executable = this.options.executable ?? resolveTailscaleExecutable();
     const info = await this.inspect();
     if (!info.connected || !info.dnsName) {
       throw new Error(info.message || "Tailscaleへ接続できません。");
     }
-    const { stdout, stderr } = await execFileAsync(
-      executable,
-      ["serve", "--bg", String(port)],
-      {
-        encoding: "utf8",
-        windowsHide: true,
-        timeout: 30_000,
-        maxBuffer: 2 * 1_024 * 1_024
-      }
-    );
-    return {
-      publicUrl: `https://${info.dnsName}`,
-      output: `${stdout}\n${stderr}`.trim()
-    };
+    try {
+      const { stdout, stderr } = await this.execute(
+        executable,
+        ["serve", "--yes", "--bg", String(port)],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 30_000,
+          maxBuffer: 2 * 1_024 * 1_024
+        }
+      );
+      return {
+        publicUrl: `https://${info.dnsName}`,
+        output: `${stdout}\n${stderr}`.trim()
+      };
+    } catch (error) {
+      throw toServeError(error);
+    }
   }
+
+  private async execute(
+    executable: string,
+    args: string[],
+    options: CommandOptions
+  ): Promise<{ stdout: string; stderr: string }> {
+    if (this.options.execute) return this.options.execute(executable, args, options);
+    const { stdout, stderr } = await execFileAsync(executable, args, {
+      ...options,
+      encoding: "utf8"
+    });
+    return { stdout: String(stdout), stderr: String(stderr) };
+  }
+}
+
+function toServeError(error: unknown): Error & { details?: string; code?: string } {
+  const failure = error as {
+    message?: unknown;
+    stderr?: unknown;
+    stdout?: unknown;
+    code?: unknown;
+    killed?: unknown;
+    signal?: unknown;
+  };
+  const stderr = typeof failure.stderr === "string" ? failure.stderr.trim() : "";
+  const stdout = typeof failure.stdout === "string" ? failure.stdout.trim() : "";
+  const original = typeof failure.message === "string" ? failure.message : String(error);
+  const combined = `${stderr}\n${stdout}\n${original}`.toLowerCase();
+  const timedOut = failure.killed === true || combined.includes("timed out");
+  const permissionDenied =
+    combined.includes("access is denied") ||
+    combined.includes("permission denied") ||
+    combined.includes("アクセスが拒否");
+  const message = timedOut
+    ? "Tailscale Serveの設定が時間内に完了しませんでした。もう一度実行してください。"
+    : permissionDenied
+      ? "Tailscale Serveを変更する権限がありません。管理者としてPowerShellを開き、同じ設定を一度実行してください。"
+      : "Tailscale Serveの設定に失敗しました。詳細を確認してください。";
+  const result = new Error(message) as Error & { details?: string; code?: string };
+  result.name = "TailscaleServeError";
+  result.code = permissionDenied ? "TAILSCALE_PERMISSION_DENIED" : "TAILSCALE_SERVE_FAILED";
+  result.details = [
+    stderr ? `stderr:\n${stderr}` : undefined,
+    stdout ? `stdout:\n${stdout}` : undefined,
+    `message=${original}`,
+    `command=tailscale serve --yes --bg <port>`
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n\n");
+  return result;
 }
 
 function resolveTailscaleExecutable(): string {

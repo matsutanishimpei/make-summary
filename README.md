@@ -130,6 +130,8 @@ Androidでのインストールから初回接続、QR登録、ホーム画面�
 
 PCアプリのウィンドウを閉じても、スマホ連携が有効ならタスクトレイで動作を続けます。スマホから使う間はPCが起動中かつスリープしておらず、Feature Context BuilderとTailscaleが動作している必要があります。終了する場合はタスクトレイのメニューから終了してください。
 
+アプリは二重起動を防止し、もう一度起動した場合は既存ウィンドウを表示します。旧版がタスクトレイに残った状態で`EADDRINUSE`が表示された場合だけ、タスクトレイから旧版を完全終了して再起動してください。
+
 Tailscale CLIを手動で確認する場合:
 
 ```powershell
@@ -137,7 +139,7 @@ tailscale status
 tailscale serve status
 ```
 
-GUIが設定する転送は `tailscale serve --bg 43127` 相当です（ポートは設定値）。`tailscale funnel` は使用しません。詳しくは[Tailscale Serveの公式リファレンス](https://tailscale.com/docs/reference/tailscale-cli/serve)を参照してください。
+GUIが設定する転送は `tailscale serve --yes --bg 43127` 相当です（ポートは設定値）。`--yes`は初回確認を非対話で完了するために使い、`tailscale funnel` は使用しません。詳しくは[Tailscale Serveの公式リファレンス](https://tailscale.com/docs/reference/tailscale-cli/serve)を参照してください。
 
 ## CLI
 

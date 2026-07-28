@@ -91,7 +91,7 @@ Feature Context Builderが開いたら、次の順で設定します。
 自動設定に失敗する場合は、PCのPowerShellで次を実行し、表示された案内URLをブラウザで開きます。
 
 ```powershell
-tailscale serve --bg 43127
+tailscale serve --yes --bg 43127
 tailscale serve status
 ```
 
@@ -214,6 +214,17 @@ Wi-Fiからモバイル回線、またはモバイル回線からWi-Fiへ切り�
 
 - [Tailscaleトラブルシューティング](https://tailscale.com/docs/reference/troubleshooting)
 - [他のVPNとの併用](https://tailscale.com/docs/reference/faq/other-vpns)
+
+### `EADDRINUSE`または「ポートはすでに使用中」と表示される
+
+以前開いたFeature Context Builderがタスクトレイで動作中のまま、`npm run dev`でもう1つ起動しています。
+
+1. WindowsのタスクトレイでFeature Context Builderを探します。
+2. 右クリックして「終了」を選びます。
+3. 開いている別のFeature Context Builderも閉じます。
+4. `npm run dev`でもう一度起動します。
+
+最新版は二重起動を検出し、新しいプロセスを増やさず既存ウィンドウを前面へ表示します。修正前のアプリが残っている場合だけ、一度タスクトレイから完全終了してください。
 
 ### QRコードが無効と表示される
 

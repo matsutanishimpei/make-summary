@@ -157,6 +157,16 @@ describe("MobileGateway", () => {
     );
     expect(response.response.status).toBe(400);
   });
+
+  it("スマホ連携ポートの二重使用を分かりやすく報告する", async () => {
+    const conflicting = new MobileGateway({ settings, staticDir });
+    const port = Number(new URL(origin).port);
+
+    await expect(conflicting.start(port)).rejects.toMatchObject({
+      code: "EADDRINUSE",
+      message: expect.stringContaining("タスクトレイ")
+    });
+  });
 });
 
 async function pair(): Promise<string> {
