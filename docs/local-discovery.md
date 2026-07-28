@@ -4,7 +4,7 @@
 
 ローカル機能探索は、コード全文を最初から外部AIへ渡さず、PC内で「どのファイルが指定機能に関係しそうか」を絞るためのcoreです。
 
-現在の段階では、安全なファイル走査、構造化コメント、通常コメント、シンボルの索引を提供します。今後、importグラフ、根拠付き順位付け、CLI、多言語Embeddingを同じcoreへ追加します。
+現在の段階では、安全なファイル走査、構造化コメント、通常コメント、シンボルの索引に加え、project内importグラフを提供します。今後、根拠付き順位付け、CLI、多言語Embeddingを同じcoreへ追加します。
 
 ```mermaid
 flowchart LR
@@ -13,9 +13,13 @@ flowchart LR
     Sample --> Structured["構造化file comment"]
     Sample --> Comments["通常comment・docstring"]
     Sample --> Symbols["class・function・type"]
+    Sample --> Imports["import・require・module"]
     Structured --> Index["DiscoveryIndex"]
     Comments --> Index
     Symbols --> Index
+    Imports --> Index
+    Index --> Graph["project内ImportGraph"]
+    Graph --> Dependencies["依存先と利用元を<br/>depth指定で展開"]
 ```
 
 ## 索引に入る情報
@@ -29,6 +33,7 @@ flowchart LR
 | 構造化comment | 機能、責務、入口、flow、関連、注意点 |
 | 通常comment・docstring | 人が書いた意味情報 |
 | class、function、interface、typeなど | 機能名とcode上の入口を対応付ける |
+| import、require、module参照 | project内の依存先と利用元をたどる |
 | truncated | sampleがfile全体か先頭だけかを明示する |
 
 これはASTの完全な代替ではありません。複数言語へ共通に適用できる軽量な候補生成です。最終的なコード収集前には、既存coreが実path、`.gitignore`、秘密情報をもう一度検証します。
@@ -59,3 +64,24 @@ const index = await buildDiscoveryIndex(
 ```
 
 `DiscoveryIndex`はproject root、索引済みファイル、実走査件数、読み取りbyte、警告を返します。後続処理はファイルシステムを再走査せず、この共通索引を利用します。
+
+## importグラフ
+
+`buildImportGraph(index)`は索引内の参照をproject相対pathへ解決します。外部packageはedgeにせず、解決できないrelative importだけを診断情報として保持します。
+
+```ts
+const graph = buildImportGraph(index);
+const related = expandImportGraph(graph, ["src/pages/LoginPage.tsx"], {
+  maxDepth: 2,
+  directions: ["dependency", "dependent"]
+});
+```
+
+- `dependency`: 対象fileがimportしている側
+- `dependent`: 対象fileをimportしている側
+- cycleはvisited setで止める
+- 同じdepthではpath順で決定的に処理する
+- TypeScript/JavaScriptはrelative path、拡張子差、`index`を解決する
+- Python relative module、Goの自module、Rustの`mod`/`crate`、Java package、C# namespaceも軽量解決する
+
+tsconfig path alias、webpack alias、動的に組み立てたimport、実行時DI、reflectionは現時点では完全解決しません。誤ったedgeを推測するより、未解決として残す方針です。
