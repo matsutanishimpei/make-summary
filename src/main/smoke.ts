@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain } from "electron";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ElectronCredentialStore } from "./secure-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const smokeDataDir = mkdtempSync(path.join(os.tmpdir(), "feature-context-smoke-"));
@@ -16,6 +17,22 @@ const timer = setTimeout(() => {
 }, 15_000);
 
 app.whenReady().then(async () => {
+  const credentialPath = path.join(smokeDataDir, "user-data", "credentials.json");
+  const credentialStore = new ElectronCredentialStore(credentialPath);
+  const smokeSecret = "feature-context-smoke-secret";
+  await credentialStore.setGeminiApiKey(smokeSecret);
+  const storedCredential = readFileSync(credentialPath, "utf8");
+  const recoveredCredential = await credentialStore.getGeminiApiKey();
+  const credentialStatus = await credentialStore.getGeminiCredentialStatus();
+  if (
+    storedCredential.includes(smokeSecret) ||
+    recoveredCredential !== smokeSecret ||
+    credentialStatus.source !== "encrypted"
+  ) {
+    throw new Error("Electron safeStorage credential smoke test failed.");
+  }
+  await credentialStore.clearGeminiApiKey();
+
   ipcMain.handle("mobile:status", () => ({
     ok: true,
     value: {
@@ -30,6 +47,10 @@ app.whenReady().then(async () => {
       autoStart: false,
       tailscale: { installed: false, connected: false }
     }
+  }));
+  ipcMain.handle("settings:credentials", () => ({
+    ok: true,
+    value: credentialStatus
   }));
   const window = new BrowserWindow({
     show: false,
@@ -50,7 +71,9 @@ app.whenReady().then(async () => {
       title: document.querySelector("h1")?.textContent,
       api: typeof window.featureContext?.start,
       remoteApi: typeof window.featureContext?.getRemoteStatus,
+      credentialApi: typeof window.featureContext?.getGeminiCredentialStatus,
       generateButton: document.querySelector("button.primary")?.textContent?.trim(),
+      views: Array.from(document.querySelectorAll('[role="tab"]')).map((tab) => tab.textContent?.trim()),
       providers: Array.from(document.querySelectorAll("#provider option")).map((option) => option.value)
     })`);
     const mobileEntryExists = existsSync(path.join(__dirname, "../../mobile/index.html"));
@@ -59,7 +82,9 @@ app.whenReady().then(async () => {
       state.title !== "Feature Context Builder" ||
       state.api !== "function" ||
       state.remoteApi !== "function" ||
+      state.credentialApi !== "function" ||
       state.generateButton !== "コンテキストを生成" ||
+      state.views.length !== 3 ||
       JSON.stringify(state.providers) !== JSON.stringify(["gemini", "gemini-api", "codex"]) ||
       !mobileEntryExists
     ) {

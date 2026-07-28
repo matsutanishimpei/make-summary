@@ -1,6 +1,7 @@
 import { safeStorage } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import type { GeminiCredentialStatus } from "../credentials.js";
 import type { GatewayCredentialProvider } from "../gateway/server.js";
 
 interface StoredCredentials {
@@ -26,6 +27,21 @@ export class ElectronCredentialStore implements GatewayCredentialProvider {
 
   async hasGeminiApiKey(): Promise<boolean> {
     return Boolean(await this.getGeminiApiKey());
+  }
+
+  async getGeminiCredentialStatus(): Promise<GeminiCredentialStatus> {
+    try {
+      const stored = JSON.parse(await fs.readFile(this.filePath, "utf8")) as StoredCredentials;
+      if (stored.geminiApiKey) {
+        const decrypted = safeStorage.decryptString(Buffer.from(stored.geminiApiKey, "base64")).trim();
+        if (decrypted) return { hasKey: true, source: "encrypted" };
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return process.env.GEMINI_API_KEY?.trim()
+      ? { hasKey: true, source: "environment" }
+      : { hasKey: false, source: null };
   }
 
   async setGeminiApiKey(apiKey: string): Promise<void> {

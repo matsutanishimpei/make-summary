@@ -20,6 +20,8 @@ import {
   type RebuildOptions
 } from "../core/index.js";
 import { RemoteController } from "./remote-controller.js";
+import { resolveDesktopBuildOptions } from "./resolve-options.js";
+import { ElectronCredentialStore } from "./secure-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jobs = new Map<string, AbortController>();
@@ -27,6 +29,7 @@ const allowedFiles = new Set<string>();
 const allowedOutputs = new Set<string>();
 let mainWindow: BrowserWindow | undefined;
 let remoteController: RemoteController | undefined;
+let credentialStore: ElectronCredentialStore | undefined;
 let tray: Tray | undefined;
 let remoteEnabled = false;
 let isQuitting = false;
@@ -81,9 +84,13 @@ if (!hasSingleInstanceLock) {
   });
 
   app.whenReady().then(async () => {
+    credentialStore = new ElectronCredentialStore(
+      path.join(app.getPath("userData"), "credentials.json")
+    );
     remoteController = new RemoteController({
       userDataDir: app.getPath("userData"),
       mobileStaticDir: path.join(__dirname, "../../mobile"),
+      credentials: credentialStore,
       onEnabledChanged: updateRemoteEnabled
     });
     try {
@@ -117,11 +124,16 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("job:start", async (event, jobId: string, options: BuildOptions) =>
-    safeInvoke(() =>
-      runJob(event.sender, jobId, (service, controller) =>
-        service.build(options, (progress) => event.sender.send("job:progress", jobId, progress), controller.signal)
-      )
-    )
+    safeInvoke(async () => {
+      const resolvedOptions = await resolveDesktopBuildOptions(options, requireCredentialStore());
+      return runJob(event.sender, jobId, (service, controller) =>
+        service.build(
+          resolvedOptions,
+          (progress) => event.sender.send("job:progress", jobId, progress),
+          controller.signal
+        )
+      );
+    })
   );
 
   ipcMain.handle("job:rebuild", async (event, jobId: string, options: RebuildOptions) =>
@@ -202,17 +214,21 @@ function registerIpc(): void {
     })
   );
 
-  ipcMain.handle("mobile:save-gemini-key", (_event, apiKey: string) =>
+  ipcMain.handle("settings:credentials", () =>
+    safeInvoke(async () => requireCredentialStore().getGeminiCredentialStatus())
+  );
+
+  ipcMain.handle("settings:save-gemini-key", (_event, apiKey: string) =>
     safeInvoke(async () => {
-      await requireRemoteController().saveGeminiApiKey(apiKey);
-      return requireRemoteController().status(getAutoStart());
+      await requireCredentialStore().setGeminiApiKey(apiKey);
+      return requireCredentialStore().getGeminiCredentialStatus();
     })
   );
 
-  ipcMain.handle("mobile:clear-gemini-key", () =>
+  ipcMain.handle("settings:clear-gemini-key", () =>
     safeInvoke(async () => {
-      await requireRemoteController().clearGeminiApiKey();
-      return requireRemoteController().status(getAutoStart());
+      await requireCredentialStore().clearGeminiApiKey();
+      return requireCredentialStore().getGeminiCredentialStatus();
     })
   );
 
@@ -291,6 +307,11 @@ async function safeInvoke<T>(
 function requireRemoteController(): RemoteController {
   if (!remoteController) throw new Error("スマホ連携の初期化が完了していません。");
   return remoteController;
+}
+
+function requireCredentialStore(): ElectronCredentialStore {
+  if (!credentialStore) throw new Error("共通設定の初期化が完了していません。");
+  return credentialStore;
 }
 
 function updateRemoteEnabled(enabled: boolean): void {

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { BuildOptions, BuildResult, ProgressEvent, RebuildOptions } from "../core/types.js";
+import type { GeminiCredentialStatus } from "../credentials.js";
 import type { GatewayStatus, PairingInfo } from "../gateway/types.js";
 
 export interface DesktopApi {
@@ -18,8 +19,9 @@ export interface DesktopApi {
   revokeRemoteDevice(sessionId: string): Promise<GatewayStatus>;
   createRemotePairing(): Promise<PairingInfo>;
   configureTailscale(): Promise<GatewayStatus>;
-  saveRemoteGeminiApiKey(apiKey: string): Promise<GatewayStatus>;
-  clearRemoteGeminiApiKey(): Promise<GatewayStatus>;
+  getGeminiCredentialStatus(): Promise<GeminiCredentialStatus>;
+  saveGeminiApiKey(apiKey: string): Promise<GeminiCredentialStatus>;
+  clearGeminiApiKey(): Promise<GeminiCredentialStatus>;
   setAutoStart(enabled: boolean): Promise<GatewayStatus>;
 }
 
@@ -50,10 +52,12 @@ const api: DesktopApi = {
     unwrap(await ipcRenderer.invoke("mobile:create-pairing")),
   configureTailscale: async () =>
     unwrap(await ipcRenderer.invoke("mobile:configure-tailscale")),
-  saveRemoteGeminiApiKey: async (apiKey) =>
-    unwrap(await ipcRenderer.invoke("mobile:save-gemini-key", apiKey)),
-  clearRemoteGeminiApiKey: async () =>
-    unwrap(await ipcRenderer.invoke("mobile:clear-gemini-key")),
+  getGeminiCredentialStatus: async () =>
+    unwrap(await ipcRenderer.invoke("settings:credentials")),
+  saveGeminiApiKey: async (apiKey) =>
+    unwrap(await ipcRenderer.invoke("settings:save-gemini-key", apiKey)),
+  clearGeminiApiKey: async () =>
+    unwrap(await ipcRenderer.invoke("settings:clear-gemini-key")),
   setAutoStart: async (enabled) =>
     unwrap(await ipcRenderer.invoke("app:set-auto-start", enabled))
 };

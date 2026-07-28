@@ -96,11 +96,9 @@ describe("App", () => {
         qrDataUrl: "data:image/png;base64,AA=="
       }),
       configureTailscale: vi.fn().mockResolvedValue(gatewayStatus),
-      saveRemoteGeminiApiKey: vi.fn().mockResolvedValue({
-        ...gatewayStatus,
-        hasGeminiApiKey: true
-      }),
-      clearRemoteGeminiApiKey: vi.fn().mockResolvedValue(gatewayStatus),
+      getGeminiCredentialStatus: vi.fn().mockResolvedValue({ hasKey: false, source: null }),
+      saveGeminiApiKey: vi.fn().mockResolvedValue({ hasKey: true, source: "encrypted" }),
+      clearGeminiApiKey: vi.fn().mockResolvedValue({ hasKey: false, source: null }),
       setAutoStart: vi.fn().mockResolvedValue(gatewayStatus)
     };
   });
@@ -129,7 +127,7 @@ describe("App", () => {
     expect(screen.getByText("01-overview.md")).toBeInTheDocument();
   });
 
-  it("Gemini APIを選択し、一時的なAPIキーとモデルを渡せる", async () => {
+  it("Gemini APIを選択し、共通の保存済みキーと指定モデルを使える", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "フォルダを選択" }));
     await waitFor(() => expect(screen.getByLabelText("プロジェクトフォルダ")).toHaveValue("C:\\project"));
@@ -139,9 +137,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("調査に使うAI"), {
       target: { value: "gemini-api" }
     });
-    fireEvent.change(screen.getByLabelText("Gemini APIキー"), {
-      target: { value: "temporary-key" }
-    });
+    expect(screen.getByText("共通のGemini APIキー")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("モデル"), {
       target: { value: "gemini-test" }
     });
@@ -151,10 +147,13 @@ describe("App", () => {
         "job-1",
         expect.objectContaining({
           provider: "gemini-api",
-          geminiApiKey: "temporary-key",
           geminiApiModel: "gemini-test"
         })
       )
+    );
+    expect(window.featureContext.start).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ geminiApiKey: expect.anything() })
     );
   });
 
@@ -164,22 +163,24 @@ describe("App", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("プロジェクトフォルダ")).toHaveValue("C:\\project")
     );
+    fireEvent.click(screen.getByRole("tab", { name: /スマホ版/ }));
     fireEvent.click(await screen.findByRole("button", { name: "現在のフォルダを登録" }));
     await waitFor(() =>
       expect(window.featureContext.registerRemoteProject).toHaveBeenCalledWith("C:\\project")
     );
   });
 
-  it("スマホ用Gemini APIキーを専用欄から暗号化保存できる", async () => {
+  it("共通設定からPC・スマホ共通のGemini APIキーを暗号化保存できる", async () => {
     render(<App />);
-    const input = await screen.findByLabelText("スマホ用Gemini APIキー");
-    fireEvent.change(input, { target: { value: "new-mobile-key" } });
-    fireEvent.click(screen.getByRole("button", { name: "このキーをPCへ暗号化保存" }));
+    fireEvent.click(screen.getByRole("tab", { name: /共通設定/ }));
+    const input = await screen.findByLabelText("Gemini APIキー");
+    fireEvent.change(input, { target: { value: "new-shared-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Windowsへ暗号化保存" }));
 
     await waitFor(() =>
-      expect(window.featureContext.saveRemoteGeminiApiKey).toHaveBeenCalledWith("new-mobile-key")
+      expect(window.featureContext.saveGeminiApiKey).toHaveBeenCalledWith("new-shared-key")
     );
     await waitFor(() => expect(input).toHaveValue(""));
-    expect(screen.getByText("保存済み（または環境変数で設定済み）")).toBeInTheDocument();
+    expect(screen.getByText("Windowsへ暗号化保存済み")).toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import type {
   ProgressStage,
   ValidationRecord
 } from "../core/types";
+import type { GeminiCredentialStatus } from "../credentials";
 import type { GatewayStatus, PairingInfo } from "../gateway/types";
 
 const baseProgressSteps: Array<{ stage: ProgressStage; label: string }> = [
@@ -18,11 +19,12 @@ const baseProgressSteps: Array<{ stage: ProgressStage; label: string }> = [
 ];
 
 type RunState = "idle" | "running" | "completed" | "error" | "cancelled";
+type AppView = "desktop" | "mobile" | "settings";
 const defaultGeminiApiModel = "gemini-3.5-flash";
 
 export function App() {
+  const [activeView, setActiveView] = useState<AppView>("desktop");
   const [provider, setProvider] = useState<AiProvider>("gemini");
-  const [geminiApiKey, setGeminiApiKey] = useState("");
   const [geminiApiModel, setGeminiApiModel] = useState(defaultGeminiApiModel);
   const [projectRoot, setProjectRoot] = useState("");
   const [feature, setFeature] = useState("");
@@ -43,7 +45,11 @@ export function App() {
   const [remoteBusy, setRemoteBusy] = useState(false);
   const [remoteError, setRemoteError] = useState("");
   const [remoteNotice, setRemoteNotice] = useState("");
-  const [remoteGeminiApiKey, setRemoteGeminiApiKey] = useState("");
+  const [credentialStatus, setCredentialStatus] = useState<GeminiCredentialStatus | null>(null);
+  const [credentialInput, setCredentialInput] = useState("");
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const [settingsNotice, setSettingsNotice] = useState("");
 
   useEffect(
     () =>
@@ -59,7 +65,7 @@ export function App() {
       feature: feature.trim(),
       provider,
       ...(provider === "gemini-api"
-        ? { geminiApiKey, geminiApiModel: geminiApiModel.trim() }
+        ? { geminiApiModel: geminiApiModel.trim() }
         : {}),
       summary,
       concat,
@@ -70,7 +76,6 @@ export function App() {
       projectRoot,
       feature,
       provider,
-      geminiApiKey,
       geminiApiModel,
       summary,
       concat,
@@ -81,6 +86,7 @@ export function App() {
 
   useEffect(() => {
     void refreshRemoteStatus();
+    void refreshCredentialStatus();
   }, []);
   const providerName =
     provider === "codex" ? "Codex CLI" : provider === "gemini-api" ? "Gemini API" : "Gemini CLI";
@@ -198,6 +204,35 @@ export function App() {
     }
   }
 
+  async function refreshCredentialStatus() {
+    try {
+      setCredentialStatus(await window.featureContext.getGeminiCredentialStatus());
+    } catch (caught) {
+      setSettingsError(normalizeError(caught).message);
+    }
+  }
+
+  async function settingsAction(
+    operation: () => Promise<GeminiCredentialStatus>,
+    successMessage: string
+  ): Promise<boolean> {
+    setSettingsBusy(true);
+    setSettingsError("");
+    setSettingsNotice("");
+    try {
+      setCredentialStatus(await operation());
+      setSettingsNotice(successMessage);
+      void refreshRemoteStatus();
+      return true;
+    } catch (caught) {
+      const problem = normalizeError(caught);
+      setSettingsError(problem.details ? `${problem.message}\n${problem.details}` : problem.message);
+      return false;
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
   async function remoteAction(
     operation: () => Promise<GatewayStatus>,
     successMessage?: string
@@ -243,20 +278,64 @@ export function App() {
             調べたい機能を指定すると、選択したAIが関連コードを探し、ChatGPTへ添付しやすいMarkdownに整理します。
           </p>
         </div>
-        <span className={`status-badge status-${runState}`}>
-          {runState === "running"
-            ? "実行中"
-            : runState === "completed"
-              ? "完了"
-              : runState === "error"
-                ? "エラー"
-                : runState === "cancelled"
-                  ? "キャンセル済み"
-                  : "待機中"}
-        </span>
+        {activeView === "desktop" ? (
+          <span className={`status-badge status-${runState}`}>
+            {runState === "running"
+              ? "実行中"
+              : runState === "completed"
+                ? "完了"
+                : runState === "error"
+                  ? "エラー"
+                  : runState === "cancelled"
+                    ? "キャンセル済み"
+                    : "待機中"}
+          </span>
+        ) : activeView === "mobile" ? (
+          <span className={`status-badge ${remoteStatus?.running ? "status-completed" : ""}`}>
+            {remoteStatus?.running ? "連携中" : "停止中"}
+          </span>
+        ) : (
+          <span className={`status-badge ${credentialStatus?.hasKey ? "status-completed" : ""}`}>
+            {credentialStatus?.hasKey ? "APIキー設定済み" : "APIキー未設定"}
+          </span>
+        )}
       </header>
 
+      <nav className="app-navigation" aria-label="画面切り替え">
+        <div role="tablist" aria-label="Feature Context Builderの画面">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "desktop"}
+            onClick={() => setActiveView("desktop")}
+          >
+            PC版
+            <small>調査と成果物生成</small>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "mobile"}
+            onClick={() => setActiveView("mobile")}
+          >
+            スマホ版
+            <small>接続と端末管理</small>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "settings"}
+            onClick={() => setActiveView("settings")}
+          >
+            共通設定
+            <small>PC・スマホ共通</small>
+          </button>
+        </div>
+      </nav>
+
       <main>
+        {activeView === "desktop" && (
+          <>
         <section className="panel input-panel" aria-labelledby="input-title">
           <div className="section-heading">
             <div>
@@ -314,21 +393,20 @@ export function App() {
 
           {provider === "gemini-api" && (
             <div className="api-settings" aria-label="Gemini API設定">
-              <div className="field">
-                <label htmlFor="gemini-api-key">Gemini APIキー</label>
-                <input
-                  id="gemini-api-key"
-                  type="password"
-                  value={geminiApiKey}
-                  onChange={(event) => setGeminiApiKey(event.target.value)}
-                  placeholder="Google AI Studioで取得したAPIキー"
-                  autoComplete="off"
-                  spellCheck={false}
-                  disabled={runState === "running"}
-                />
-                <small>
-                  このキーは成果物や設定ファイルへ保存しません。未入力時はGEMINI_API_KEYを使用します。
-                </small>
+              <div className="credential-summary">
+                <div>
+                  <strong>共通のGemini APIキー</strong>
+                  <small>
+                    {credentialStatus?.source === "encrypted"
+                      ? "Windowsへ暗号化保存したキーをPC版とスマホ版で使用します。"
+                      : credentialStatus?.source === "environment"
+                        ? "環境変数GEMINI_API_KEYをPC版とスマホ版で使用します。"
+                        : "共通設定でAPIキーを保存すると、PC版とスマホ版の両方で使用できます。"}
+                  </small>
+                </div>
+                <button type="button" className="secondary" onClick={() => setActiveView("settings")}>
+                  {credentialStatus?.hasKey ? "共通設定を確認" : "APIキーを設定"}
+                </button>
               </div>
               <div className="field">
                 <label htmlFor="gemini-api-model">モデル</label>
@@ -451,12 +529,13 @@ export function App() {
             onRebuild={rebuild}
           />
         )}
+          </>
+        )}
 
+        {activeView === "mobile" && (
         <RemotePanel
           status={remoteStatus}
           projectRoot={projectRoot}
-          geminiApiKey={remoteGeminiApiKey}
-          onGeminiApiKeyChange={setRemoteGeminiApiKey}
           busy={remoteBusy}
           error={remoteError}
           notice={remoteNotice}
@@ -488,24 +567,36 @@ export function App() {
           onRevoke={(sessionId) =>
             remoteAction(() => window.featureContext.revokeRemoteDevice(sessionId))
           }
-          onSaveKey={async (apiKey) => {
-            const saved = await remoteAction(
-              () => window.featureContext.saveRemoteGeminiApiKey(apiKey),
-              "スマホ用Gemini APIキーをWindowsの暗号化機能で保存しました。"
-            );
-            if (saved) setRemoteGeminiApiKey("");
-            return saved;
-          }}
-          onClearKey={() =>
-            remoteAction(
-              () => window.featureContext.clearRemoteGeminiApiKey(),
-              "保存済みGemini APIキーを削除しました。"
-            )
-          }
           onAutoStart={(enabled) =>
             remoteAction(() => window.featureContext.setAutoStart(enabled))
           }
         />
+        )}
+
+        {activeView === "settings" && (
+          <CommonSettingsPanel
+            status={credentialStatus}
+            apiKey={credentialInput}
+            busy={settingsBusy}
+            error={settingsError}
+            notice={settingsNotice}
+            onApiKeyChange={setCredentialInput}
+            onSave={async () => {
+              const saved = await settingsAction(
+                () => window.featureContext.saveGeminiApiKey(credentialInput),
+                "Gemini APIキーをWindowsの暗号化機能で保存しました。PC版とスマホ版で利用できます。"
+              );
+              if (saved) setCredentialInput("");
+            }}
+            onClear={() =>
+              settingsAction(
+                () => window.featureContext.clearGeminiApiKey(),
+                "Windowsへ保存したGemini APIキーを削除しました。"
+              )
+            }
+            onRefresh={refreshCredentialStatus}
+          />
+        )}
       </main>
 
       {preview && (
@@ -526,8 +617,6 @@ export function App() {
 interface RemotePanelProps {
   status: GatewayStatus | null;
   projectRoot: string;
-  geminiApiKey: string;
-  onGeminiApiKeyChange: (value: string) => void;
   busy: boolean;
   error: string;
   notice: string;
@@ -540,8 +629,6 @@ interface RemotePanelProps {
   onRemoveProject: (projectId: string) => void;
   onPair: () => void;
   onRevoke: (sessionId: string) => void;
-  onSaveKey: (apiKey: string) => Promise<boolean>;
-  onClearKey: () => void;
   onAutoStart: (enabled: boolean) => void;
 }
 
@@ -626,65 +713,28 @@ function RemotePanel(props: RemotePanelProps) {
             Windowsログイン時に自動起動し、スマホ連携を待ち受ける
           </label>
 
-          <div className="remote-columns">
-            <div className="remote-box">
-              <div className="remote-box-heading">
-                <div><h3>利用可能なプロジェクト</h3><p>スマホから任意パスは指定できません。</p></div>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={props.onRegisterProject}
-                  disabled={props.busy || !props.projectRoot.trim()}
-                >
-                  現在のフォルダを登録
-                </button>
-              </div>
-              {status.projects.length ? (
-                <ul className="remote-list">
-                  {status.projects.map((project) => (
-                    <li key={project.id}>
-                      <div><strong>{project.label}</strong><small>{project.root}</small></div>
-                      <button type="button" className="text-button" onClick={() => props.onRemoveProject(project.id)} disabled={props.busy}>解除</button>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="remote-empty">まだ登録されていません。</p>}
+          <div className="remote-box">
+            <div className="remote-box-heading">
+              <div><h3>利用可能なプロジェクト</h3><p>スマホから任意パスは指定できません。</p></div>
+              <button
+                type="button"
+                className="secondary"
+                onClick={props.onRegisterProject}
+                disabled={props.busy || !props.projectRoot.trim()}
+              >
+                現在のフォルダを登録
+              </button>
             </div>
-
-            <div className="remote-box">
-              <div className="remote-box-heading">
-                <div><h3>Gemini APIキー</h3><p>スマホへは送らず、PCで暗号化保存します。</p></div>
-              </div>
-              <p className={status.hasGeminiApiKey ? "credential-ok" : "remote-empty"}>
-                {status.hasGeminiApiKey ? "保存済み（または環境変数で設定済み）" : "未保存"}
-              </p>
-              <div className="remote-credential-field">
-                <label htmlFor="remote-gemini-api-key">スマホ用Gemini APIキー</label>
-                <input
-                  id="remote-gemini-api-key"
-                  type="password"
-                  value={props.geminiApiKey}
-                  onChange={(event) => props.onGeminiApiKeyChange(event.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="新しいAPIキーを入力"
-                />
-                <small>この入力欄からPCへ暗号化保存します。スマホや成果物へは出力しません。</small>
-              </div>
-              <div className="inline-actions">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => void props.onSaveKey(props.geminiApiKey)}
-                  disabled={props.busy || !props.geminiApiKey.trim()}
-                >
-                  このキーをPCへ暗号化保存
-                </button>
-                {status.hasGeminiApiKey && (
-                  <button type="button" className="danger-quiet" onClick={props.onClearKey} disabled={props.busy}>削除</button>
-                )}
-              </div>
-            </div>
+            {status.projects.length ? (
+              <ul className="remote-list">
+                {status.projects.map((project) => (
+                  <li key={project.id}>
+                    <div><strong>{project.label}</strong><small>{project.root}</small></div>
+                    <button type="button" className="text-button" onClick={() => props.onRemoveProject(project.id)} disabled={props.busy}>解除</button>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="remote-empty">まだ登録されていません。</p>}
           </div>
 
           <div className="remote-box paired-devices">
@@ -722,6 +772,101 @@ function RemotePanel(props: RemotePanelProps) {
           </section>
         </div>
       )}
+    </section>
+  );
+}
+
+interface CommonSettingsPanelProps {
+  status: GeminiCredentialStatus | null;
+  apiKey: string;
+  busy: boolean;
+  error: string;
+  notice: string;
+  onApiKeyChange: (value: string) => void;
+  onSave: () => void;
+  onClear: () => void;
+  onRefresh: () => void;
+}
+
+function CommonSettingsPanel(props: CommonSettingsPanelProps) {
+  const statusLabel = !props.status
+    ? "確認中"
+    : props.status.source === "encrypted"
+      ? "Windowsへ暗号化保存済み"
+      : props.status.source === "environment"
+        ? "環境変数 GEMINI_API_KEY を使用中"
+        : "未設定";
+
+  return (
+    <section className="panel settings-panel" aria-labelledby="settings-title">
+      <div className="section-heading">
+        <div><span className="step-number">SETTINGS</span><h2 id="settings-title">共通設定</h2></div>
+        <p>PC版とスマホ版の両方で利用する認証情報を、このPCで一元管理します。</p>
+      </div>
+
+      <div className="settings-card">
+        <div className="settings-card-heading">
+          <div>
+            <h3>Gemini API認証</h3>
+            <p>保存した1つのAPIキーを、PCからの生成とスマホからの生成で共有します。</p>
+          </div>
+          <strong className={props.status?.hasKey ? "credential-state is-set" : "credential-state"}>
+            {statusLabel}
+          </strong>
+        </div>
+
+        <div className="field">
+          <label htmlFor="common-gemini-api-key">Gemini APIキー</label>
+          <input
+            id="common-gemini-api-key"
+            type="password"
+            value={props.apiKey}
+            onChange={(event) => props.onApiKeyChange(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={props.status?.hasKey ? "変更する場合だけ新しいキーを入力" : "Google AI Studioで取得したAPIキー"}
+            disabled={props.busy}
+          />
+          <small>
+            平文は保持せず、ElectronのsafeStorageを通してWindowsの暗号化機能で保存します。
+            スマホ、成果物、manifest、ログへは出力しません。
+          </small>
+        </div>
+
+        <div className="inline-actions">
+          <button
+            type="button"
+            className="primary"
+            onClick={props.onSave}
+            disabled={props.busy || !props.apiKey.trim()}
+          >
+            Windowsへ暗号化保存
+          </button>
+          {props.status?.source === "encrypted" && (
+            <button type="button" className="danger-quiet" onClick={props.onClear} disabled={props.busy}>
+              保存済みキーを削除
+            </button>
+          )}
+          <button type="button" className="text-button" onClick={props.onRefresh} disabled={props.busy}>
+            状態を再確認
+          </button>
+        </div>
+
+        {props.status?.source === "environment" && (
+          <p className="settings-hint">
+            現在はWindowsへ保存したキーではなく、起動環境のGEMINI_API_KEYを利用しています。
+            この画面から暗号化保存すると、保存したキーが優先されます。
+          </p>
+        )}
+      </div>
+
+      <div className="settings-usage-grid">
+        <div><strong>PC版</strong><p>「Gemini API」を選ぶと、ここで設定したキーを自動的に使用します。</p></div>
+        <div><strong>スマホ版</strong><p>スマホへキーを送らず、PC上のゲートウェイが同じキーを使用します。</p></div>
+      </div>
+
+      {props.error && <div className="error-box remote-message"><pre>{props.error}</pre></div>}
+      {props.notice && <div className="notice">{props.notice}</div>}
     </section>
   );
 }

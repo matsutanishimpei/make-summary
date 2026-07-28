@@ -12,6 +12,7 @@ import { TailscaleService } from "./tailscale.js";
 export interface RemoteControllerOptions {
   userDataDir: string;
   mobileStaticDir: string;
+  credentials: ElectronCredentialStore;
   onEnabledChanged?: (enabled: boolean) => void;
 }
 
@@ -25,9 +26,7 @@ export class RemoteController {
     this.settings = new GatewaySettingsStore(
       path.join(options.userDataDir, "mobile-gateway.json")
     );
-    this.credentials = new ElectronCredentialStore(
-      path.join(options.userDataDir, "credentials.json")
-    );
+    this.credentials = options.credentials;
     this.gateway = new MobileGateway({
       settings: this.settings,
       credentials: this.credentials,
@@ -81,14 +80,6 @@ export class RemoteController {
 
   async revokeDevice(sessionId: string): Promise<boolean> {
     return this.settings.revokeSession(sessionId);
-  }
-
-  async saveGeminiApiKey(apiKey: string): Promise<void> {
-    await this.credentials.setGeminiApiKey(apiKey);
-  }
-
-  async clearGeminiApiKey(): Promise<void> {
-    await this.credentials.clearGeminiApiKey();
   }
 
   async configureTailscale(): Promise<{ publicUrl: string; output: string }> {

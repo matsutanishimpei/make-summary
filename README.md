@@ -37,14 +37,15 @@ gemini --help
 
 ## Gemini APIの準備
 
-Gemini CLIのGoogleアカウント認証が利用できない場合は、Google AI StudioでGemini APIキーを作成し、GUIの「調査に使うAI」で「Gemini API」を選択してください。
+Gemini CLIのGoogleアカウント認証が利用できない場合は、Google AI StudioでGemini APIキーを作成し、GUIの「共通設定」へ一度保存してから「PC版」またはスマホで「Gemini API」を選択してください。
 
 1. [Google AI StudioのAPIキーページ](https://aistudio.google.com/app/apikey)でキーを作成
-2. GUIの「Gemini APIキー」へ貼り付け
-3. 必要に応じてモデル名を変更
-4. コンテキストを生成
+2. GUIの「共通設定」→「Gemini APIキー」へ貼り付け
+3. 「Windowsへ暗号化保存」を押す
+4. 「PC版」で「Gemini API」を選び、必要に応じてモデル名を変更
+5. コンテキストを生成
 
-既定モデルは `gemini-3.5-flash` です。GUIで入力したAPIキーはメモリ上で一時利用するだけで、`manifest.json`、bundle、設定ファイルへ保存しません。CLIから利用する場合は、コマンドライン引数ではなく環境変数を使います。
+既定モデルは `gemini-3.5-flash` です。GUIで保存したAPIキーはElectronの `safeStorage` を通してWindowsの暗号化機能でPCに保存し、PC版とスマホ版で共有します。平文のキーは `manifest.json`、bundle、ログへ保存しません。CLIから利用する場合は、コマンドライン引数ではなく環境変数を使います。
 
 Googleの無料枠では、送信した内容がサービス改善に利用される場合があります。機密コードで利用する前に、Google AI Studioのデータ利用条件と対象プロジェクトの方針を確認してください。
 
@@ -99,7 +100,9 @@ npm run dev
 
 `npm run dev` は型チェックとビルドを行ってからElectronアプリを起動します。GUIだけで次を完了できます。
 
-1. プロジェクトフォルダを選択
+画面は「PC版」「スマホ版」「共通設定」に分かれています。「共通設定」で保存したGemini APIキーはPC版とスマホ版の両方が利用します。
+
+1. 「PC版」でプロジェクトフォルダを選択
 2. 調べたい機能・目的を入力
 3. Gemini CLI / Gemini API / Codex CLI、要約、コード連結、最大ファイル数、文字数上限を指定
 4. 生成し、進捗を確認（実行中はキャンセル可能）
@@ -119,8 +122,8 @@ Androidでのインストールから初回接続、QR登録、ホーム画面�
 初回設定はPCのGUIで行います。
 
 1. 通常どおりプロジェクトフォルダを選ぶ
-2. 「スマホ連携」から「現在のプロジェクトを登録」
-3. Gemini APIをスマホから使う場合は、スマホ連携欄へAPIキーを入力して「このキーをPCへ暗号化保存」
+2. 「スマホ版」から「現在のプロジェクトを登録」
+3. Gemini APIを使う場合は、「共通設定」でAPIキーを「Windowsへ暗号化保存」
 4. 「Tailscale Serveを自動設定」を押す
 5. 「接続用QRコード」を表示し、スマートフォンで読み取る
 6. 必要なら「Windowsログイン時にバックグラウンド起動」を有効にする
@@ -204,6 +207,7 @@ Ctrl+C / SIGTERM でキャンセルすると、実行中のAI CLI子プロセス
 React Renderer (Desktop GUI)
         │ IPC
 Electron Main
+  ├─ Encrypted credential store (PC / Mobile shared)
   ├─ MobileGateway (127.0.0.1)
   │    ├─ QR pairing / session
   │    ├─ registered projects only
@@ -249,7 +253,7 @@ GUIのReactコンポーネントはAI呼び出しやファイルシステムを�
 - スマホはPCで事前登録したプロジェクトIDだけを選択でき、任意のパスや出力先を指定できません。
 - QRペアリング値は32バイトの乱数で、URLフラグメントに載せるためHTTPリクエストへ送信されず、5分・1回で失効します。
 - 端末セッション値はCookieへ `HttpOnly`、`Secure`、`SameSite=Strict` を設定し、PCにはSHA-256ハッシュだけを保存します。PCのGUIから端末ごとに失効できます。
-- スマホ用Gemini APIキーはスマホへ送らず、Electronの `safeStorage`（WindowsではOSの暗号化機能）でPCへ暗号化保存します。環境変数 `GEMINI_API_KEY` も利用できます。
+- 共通のGemini APIキーはスマホへ送らず、Electronの `safeStorage`（WindowsではOSの暗号化機能）でPCへ暗号化保存し、PC版とスマホ版で共有します。環境変数 `GEMINI_API_KEY` も利用できます。
 - スマホ向けZIPには `bundle` のMarkdownだけを含めます。絶対パスを含む内部管理用 `manifest.json` はPCに残します。
 - Tailscale Funnel、ルーターのポート開放、パブリックlisten、クラウド保存は行いません。
 
@@ -264,7 +268,7 @@ npm run build
 npm run test:smoke
 ```
 
-テストは一時プロジェクト、`InvestigationRunner`、Gemini API HTTP通信のモックを使用し、実際のAI CLIや外部ネットワークを呼びません。coreの正常系、プロバイダー選択、Codex JSONL解析、Gemini APIの構造化出力・補正再試行・認証エラー・利用上限・キャンセル、安全なコード索引、最大5件梱包、オプション、選択・再構築、危険パス、gitignore、秘密情報、バイナリ、不正JSON、CLI異常、タイムアウト、Windows日本語パス、文字数上限、コード一致、上書き防止を検証します。スマホ連携は未認証拒否、1回限りのQRペアリング、登録プロジェクト制限、実coreを通した生成、MarkdownだけのZIPを検証します。GUIは主要な初回入力、3プロバイダーの選択、Gemini APIキー・モデル入力、生成操作、スマホ登録操作を検証します。`test:smoke` は非表示のElectronウィンドウを起動し、デスクトップ画面、モバイルIPC、ビルド済みPWAが実際に読み込まれることを確認します。
+テストは一時プロジェクト、`InvestigationRunner`、Gemini API HTTP通信のモックを使用し、実際のAI CLIや外部ネットワークを呼びません。coreの正常系、プロバイダー選択、Codex JSONL解析、Gemini APIの構造化出力・補正再試行・認証エラー・利用上限・キャンセル、安全なコード索引、最大5件梱包、オプション、選択・再構築、危険パス、gitignore、秘密情報、バイナリ、不正JSON、CLI異常、タイムアウト、Windows日本語パス、文字数上限、コード一致、上書き防止を検証します。スマホ連携は未認証拒否、1回限りのQRペアリング、登録プロジェクト制限、実coreを通した生成、MarkdownだけのZIPを検証します。GUIはPC版・スマホ版・共通設定の切り替え、3プロバイダーの選択、共通APIキーの暗号化保存、保存済みキーを使うPC生成、スマホ登録操作を検証します。`test:smoke` は非表示のElectronウィンドウを起動し、3画面、共通設定IPC、モバイルIPC、ビルド済みPWAが実際に読み込まれることを確認します。
 
 ## 現在の制限事項
 

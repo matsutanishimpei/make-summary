@@ -21,7 +21,7 @@ const messages: Record<ErrorCode, string> = {
   CLI_NOT_FOUND: "選択したAI CLIが見つかりません。インストール後、ターミナルでバージョンを確認してください。",
   CLI_UNAUTHENTICATED: "選択したAI CLIが認証されていません。ターミナルで認証を完了してください。",
   CLI_FAILED: "AI CLIの実行に失敗しました。詳細ログを確認してから再実行してください。",
-  API_KEY_MISSING: "Gemini APIキーが入力されていません。Google AI Studioで取得したキーを入力してください。",
+  API_KEY_MISSING: "Gemini APIキーが設定されていません。GUIの共通設定、またはGEMINI_API_KEYを設定してください。",
   API_UNAUTHENTICATED: "Gemini APIキーが無効か、このモデルを利用する権限がありません。キーとモデル名を確認してください。",
   API_RATE_LIMIT: "Gemini APIの利用上限に達しました。しばらく待つか、Google AI Studioで利用状況を確認してください。",
   API_FAILED: "Gemini APIの実行に失敗しました。詳細ログを確認してから再実行してください。",
