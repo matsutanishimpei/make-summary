@@ -78,8 +78,8 @@ Feature Context Builderが開いたら、次の順で設定します。
 2. 画面下部の「スマホ連携」まで移動します。
 3. 「現在のフォルダを登録」を押します。
 4. Gemini APIを使う場合:
-   - 画面上部のGemini APIキー欄へキーを入力します。
-   - スマホ連携欄で「上のAPIキーを安全に保存」を押します。
+   - スマホ連携欄の「スマホ用Gemini APIキー」へ新しいキーを入力します。
+   - 「このキーをPCへ暗号化保存」を押します。
 5. 「Tailscale Serveを自動設定」を押します。
 6. 次の状態を確認します。
    - ローカルサーバー: `起動中`
@@ -234,7 +234,7 @@ Wi-Fiからモバイル回線、またはモバイル回線からWi-Fiへ切り�
 
 ### Gemini APIが実行できない
 
-PCのFeature Context BuilderでGemini APIキーを入力し、「上のAPIキーを安全に保存」を押してください。AndroidへAPIキーを入力する必要はありません。
+PCのFeature Context Builderで、スマホ連携欄の「スマホ用Gemini APIキー」へ新しいキーを入力し、「このキーをPCへ暗号化保存」を押してください。AndroidへAPIキーを入力する必要はありません。
 
 ### Gemini CLIまたはCodex CLIが実行できない
 

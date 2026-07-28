@@ -169,4 +169,17 @@ describe("App", () => {
       expect(window.featureContext.registerRemoteProject).toHaveBeenCalledWith("C:\\project")
     );
   });
+
+  it("スマホ用Gemini APIキーを専用欄から暗号化保存できる", async () => {
+    render(<App />);
+    const input = await screen.findByLabelText("スマホ用Gemini APIキー");
+    fireEvent.change(input, { target: { value: "new-mobile-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "このキーをPCへ暗号化保存" }));
+
+    await waitFor(() =>
+      expect(window.featureContext.saveRemoteGeminiApiKey).toHaveBeenCalledWith("new-mobile-key")
+    );
+    await waitFor(() => expect(input).toHaveValue(""));
+    expect(screen.getByText("保存済み（または環境変数で設定済み）")).toBeInTheDocument();
+  });
 });

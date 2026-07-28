@@ -43,6 +43,7 @@ export function App() {
   const [remoteBusy, setRemoteBusy] = useState(false);
   const [remoteError, setRemoteError] = useState("");
   const [remoteNotice, setRemoteNotice] = useState("");
+  const [remoteGeminiApiKey, setRemoteGeminiApiKey] = useState("");
 
   useEffect(
     () =>
@@ -200,16 +201,18 @@ export function App() {
   async function remoteAction(
     operation: () => Promise<GatewayStatus>,
     successMessage?: string
-  ) {
+  ): Promise<boolean> {
     setRemoteBusy(true);
     setRemoteError("");
     setRemoteNotice("");
     try {
       setRemoteStatus(await operation());
       if (successMessage) setRemoteNotice(successMessage);
+      return true;
     } catch (caught) {
       const problem = normalizeError(caught);
       setRemoteError(problem.details ? `${problem.message}\n${problem.details}` : problem.message);
+      return false;
     } finally {
       setRemoteBusy(false);
     }
@@ -452,7 +455,8 @@ export function App() {
         <RemotePanel
           status={remoteStatus}
           projectRoot={projectRoot}
-          geminiApiKey={geminiApiKey}
+          geminiApiKey={remoteGeminiApiKey}
+          onGeminiApiKeyChange={setRemoteGeminiApiKey}
           busy={remoteBusy}
           error={remoteError}
           notice={remoteNotice}
@@ -484,12 +488,14 @@ export function App() {
           onRevoke={(sessionId) =>
             remoteAction(() => window.featureContext.revokeRemoteDevice(sessionId))
           }
-          onSaveKey={() =>
-            remoteAction(
-              () => window.featureContext.saveRemoteGeminiApiKey(geminiApiKey),
-              "Gemini APIキーをWindowsの暗号化機能で保存しました。"
-            )
-          }
+          onSaveKey={async (apiKey) => {
+            const saved = await remoteAction(
+              () => window.featureContext.saveRemoteGeminiApiKey(apiKey),
+              "スマホ用Gemini APIキーをWindowsの暗号化機能で保存しました。"
+            );
+            if (saved) setRemoteGeminiApiKey("");
+            return saved;
+          }}
           onClearKey={() =>
             remoteAction(
               () => window.featureContext.clearRemoteGeminiApiKey(),
@@ -521,6 +527,7 @@ interface RemotePanelProps {
   status: GatewayStatus | null;
   projectRoot: string;
   geminiApiKey: string;
+  onGeminiApiKeyChange: (value: string) => void;
   busy: boolean;
   error: string;
   notice: string;
@@ -533,7 +540,7 @@ interface RemotePanelProps {
   onRemoveProject: (projectId: string) => void;
   onPair: () => void;
   onRevoke: (sessionId: string) => void;
-  onSaveKey: () => void;
+  onSaveKey: (apiKey: string) => Promise<boolean>;
   onClearKey: () => void;
   onAutoStart: (enabled: boolean) => void;
 }
@@ -651,14 +658,27 @@ function RemotePanel(props: RemotePanelProps) {
               <p className={status.hasGeminiApiKey ? "credential-ok" : "remote-empty"}>
                 {status.hasGeminiApiKey ? "保存済み（または環境変数で設定済み）" : "未保存"}
               </p>
+              <div className="remote-credential-field">
+                <label htmlFor="remote-gemini-api-key">スマホ用Gemini APIキー</label>
+                <input
+                  id="remote-gemini-api-key"
+                  type="password"
+                  value={props.geminiApiKey}
+                  onChange={(event) => props.onGeminiApiKeyChange(event.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="新しいAPIキーを入力"
+                />
+                <small>この入力欄からPCへ暗号化保存します。スマホや成果物へは出力しません。</small>
+              </div>
               <div className="inline-actions">
                 <button
                   type="button"
                   className="secondary"
-                  onClick={props.onSaveKey}
+                  onClick={() => void props.onSaveKey(props.geminiApiKey)}
                   disabled={props.busy || !props.geminiApiKey.trim()}
                 >
-                  上のAPIキーを安全に保存
+                  このキーをPCへ暗号化保存
                 </button>
                 {status.hasGeminiApiKey && (
                   <button type="button" className="danger-quiet" onClick={props.onClearKey} disabled={props.busy}>削除</button>
