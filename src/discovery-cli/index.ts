@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * @feature-context
- * @feature feature discovery CLI, local context selection, explainable ranking
- * @role ローカル探索coreをスクリプトやデバッグから利用する薄いCLIを提供する
+ * @feature feature discovery CLI, local context selection, multilingual embedding, explainable ranking
+ * @role 多言語Embeddingを含むローカル探索coreをスクリプトやデバッグから利用する薄いCLIを提供する
  * @entry feature-discovery command, runFeatureDiscoveryCli
  * @flow command arguments -> discoverFeature -> text or JSON result
  * @related ../discovery/discover.ts, ../discovery/types.ts
@@ -33,6 +33,7 @@ interface DiscoveryCliOptions {
   maxFiles: number;
   maxScanBytes: number;
   maxFileBytes: number;
+  embedding: "builtin" | "off";
 }
 
 export interface DiscoveryCliDependencies {
@@ -53,6 +54,7 @@ interface DiscoveryCliJsonResult {
     scannedBytes: number;
   };
   query: FeatureDiscoveryResult["ranking"]["query"];
+  embedding?: FeatureDiscoveryResult["ranking"]["embedding"];
   results: RankedDiscoveryFile[];
   unresolvedImports: FeatureDiscoveryResult["graph"]["unresolved"];
   warnings: string[];
@@ -80,7 +82,8 @@ export async function runFeatureDiscoveryCli(
       ranking: {
         maxResults: commandOptions.max,
         minScore: commandOptions.minScore,
-        graphDepth: commandOptions.depth
+        graphDepth: commandOptions.depth,
+        embedding: commandOptions.embedding === "off" ? false : undefined
       }
     };
 
@@ -124,6 +127,12 @@ function createProgram(
     .option("--min-score <n>", "表示する最低スコア", parseNonNegativeInteger, 0)
     .option("--format <format>", "出力形式（text または json）", parseFormat, "text")
     .option("--explain", "text出力に根拠の詳細を表示する", false)
+    .option(
+      "--embedding <mode>",
+      "多言語Embedding（builtin または off）",
+      parseEmbeddingMode,
+      "builtin"
+    )
     .option("--max-files <n>", "走査する最大ファイル数", parsePositiveInteger, 25_000)
     .option(
       "--max-scan-bytes <n>",
@@ -184,6 +193,13 @@ function parseFormat(value: string): "text" | "json" {
   return value;
 }
 
+function parseEmbeddingMode(value: string): "builtin" | "off" {
+  if (value !== "builtin" && value !== "off") {
+    throw new InvalidArgumentError("builtin または off を指定してください");
+  }
+  return value;
+}
+
 function toJsonResult(
   feature: string,
   result: FeatureDiscoveryResult
@@ -198,6 +214,7 @@ function toJsonResult(
       scannedBytes: result.index.scannedBytes
     },
     query: result.ranking.query,
+    embedding: result.ranking.embedding,
     results: result.ranking.files,
     unresolvedImports: result.graph.unresolved,
     warnings: [...result.index.warnings, ...result.ranking.warnings]
@@ -213,6 +230,9 @@ function formatTextResult(
     `機能: ${feature}`,
     `プロジェクト: ${result.index.projectRoot}`,
     `索引: ${result.index.files.length}ファイル（走査 ${result.index.scannedFiles}件）`,
+    result.ranking.embedding
+      ? `Embedding: ${result.ranking.embedding.provider}（意味一致 ${result.ranking.embedding.matchedFiles}件）`
+      : "Embedding: 無効",
     ""
   ];
 

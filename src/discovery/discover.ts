@@ -1,10 +1,10 @@
 /**
  * @feature-context
- * @feature feature discovery, local context selection, application facade
- * @role 安全な索引・import graph・説明可能な順位付けを1回のlocal use caseとして提供する
+ * @feature feature discovery, local context selection, multilingual embedding, application facade
+ * @role 安全な索引・import graph・多言語Embedding・説明可能な順位付けを1回のlocal use caseとして提供する
  * @entry discoverFeature
- * @flow project root + feature query -> index -> graph -> ranking
- * @related file-index.ts, import-graph.ts, ranker.ts
+ * @flow project root + feature query -> index -> graph -> multilingual ranking
+ * @related file-index.ts, import-graph.ts, embedding.ts, ranker.ts
  * @caution 外部AI送信と成果物書き込みを行わないlocal-only facadeを維持する
  */
 
@@ -24,6 +24,6 @@ export async function discoverFeature(
 ): Promise<FeatureDiscoveryResult> {
   const index = await buildDiscoveryIndex(projectRoot, options.indexLimits, signal);
   const graph = buildImportGraph(index);
-  const ranking = await rankDiscoveryIndex(index, graph, feature, options.ranking);
+  const ranking = await rankDiscoveryIndex(index, graph, feature, options.ranking, signal);
   return { index, graph, ranking };
 }

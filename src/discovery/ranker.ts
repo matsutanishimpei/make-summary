@@ -1,14 +1,18 @@
 /**
  * @feature-context
- * @feature feature discovery, explainable ranking, context selection
- * @role path・comment・symbol・import・graphを根拠ごとの点数として合成し候補順を決める
+ * @feature feature discovery, explainable ranking, multilingual embedding, context selection
+ * @role path・comment・symbol・import・意味類似度・graphを根拠ごとの点数として合成し候補順を決める
  * @entry rankDiscoveryIndex
- * @flow query expansion + DiscoveryIndex + ImportGraph -> evidence -> stable ranking
- * @related query.ts, import-graph.ts, types.ts
+ * @flow query expansion + DiscoveryIndex + EmbeddingProvider + ImportGraph -> evidence -> stable ranking
+ * @related query.ts, embedding.ts, import-graph.ts, types.ts
  * @caution 合計点だけでなく全evidenceを返し、人とtestが選定理由を検証できるようにする
  */
 
 import path from "node:path";
+import {
+  cosineSimilarity,
+  LocalMultilingualEmbedding
+} from "./embedding.js";
 import { expandImportGraph } from "./import-graph.js";
 import {
   expandDiscoveryQuery,
@@ -16,6 +20,7 @@ import {
 } from "./query.js";
 import type {
   DiscoveryFile,
+  DiscoveryEmbeddingSummary,
   DiscoveryIndex,
   DiscoveryQueryTerm,
   DiscoveryRanking,
@@ -34,17 +39,44 @@ const directKinds = new Set<RankingEvidenceKind>([
   "symbol",
   "comment",
   "import",
-  "content"
+  "content",
+  "semantic"
 ]);
+
+const EMBEDDING_BATCH_SIZE = 128;
 
 export async function rankDiscoveryIndex(
   index: DiscoveryIndex,
   graph: ImportGraph,
   rawQuery: string,
-  options: DiscoveryRankingOptions = {}
+  options: DiscoveryRankingOptions = {},
+  signal?: AbortSignal
 ): Promise<DiscoveryRanking> {
   const query = expandDiscoveryQuery(rawQuery);
   const base = index.files.map((file) => rankFile(file, query.terms));
+  const warnings: string[] = [];
+  let embedding: DiscoveryEmbeddingSummary | undefined;
+  const embeddingProvider =
+    options.embedding === false
+      ? undefined
+      : options.embedding ?? new LocalMultilingualEmbedding();
+  if (embeddingProvider) {
+    try {
+      embedding = await addSemanticEvidence(
+        base,
+        index.files,
+        rawQuery,
+        embeddingProvider,
+        options,
+        signal
+      );
+    } catch (error) {
+      if (isAbortError(error) || signal?.aborted) throw error;
+      warnings.push(
+        `多言語Embeddingを適用できなかったため文字列順位だけを使用します (${detail(error)})`
+      );
+    }
+  }
   const byPath = new Map(base.map((file) => [file.path, file]));
   const seeds = base
     .filter((file) => file.direct)
@@ -105,13 +137,73 @@ export async function rankDiscoveryIndex(
   const graphMatchCount = files.filter(
     (file) => file.relation === "dependency" || file.relation === "dependent"
   ).length;
-  const warnings: string[] = [];
   if (query.terms.length === 0) warnings.push("検索に使える機能語を抽出できませんでした。");
   if (directMatchCount === 0) {
     warnings.push("機能語へ直接一致するfileがなく、source配置によるfallback順です。");
   }
 
-  return { query, files, directMatchCount, graphMatchCount, warnings };
+  return { query, files, directMatchCount, graphMatchCount, embedding, warnings };
+}
+
+async function addSemanticEvidence(
+  rankedFiles: RankedDiscoveryFile[],
+  indexedFiles: DiscoveryFile[],
+  rawQuery: string,
+  provider: NonNullable<Exclude<DiscoveryRankingOptions["embedding"], false>>,
+  options: DiscoveryRankingOptions,
+  signal?: AbortSignal
+): Promise<DiscoveryEmbeddingSummary> {
+  const threshold = options.semanticThreshold ?? 0.28;
+  const weight = options.semanticWeight ?? 160;
+  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) {
+    throw new RangeError("semanticThresholdは0～1で指定してください。");
+  }
+  if (!Number.isFinite(weight) || weight < 0) {
+    throw new RangeError("semanticWeightは0以上で指定してください。");
+  }
+  if (!Number.isInteger(provider.dimensions) || provider.dimensions < 1) {
+    throw new RangeError("EmbeddingProviderのdimensionsが不正です。");
+  }
+
+  const [queryVector] = await provider.embed([rawQuery], signal);
+  validateVector(queryVector, provider);
+  let matchedFiles = 0;
+  for (let start = 0; start < indexedFiles.length; start += EMBEDDING_BATCH_SIZE) {
+    throwIfAborted(signal);
+    const batch = indexedFiles.slice(start, start + EMBEDDING_BATCH_SIZE);
+    const vectors = await provider.embed(
+      batch.map((file) => file.searchText),
+      signal
+    );
+    if (vectors.length !== batch.length) {
+      throw new Error(
+        `EmbeddingProviderが${batch.length}件に対して${vectors.length}件を返しました。`
+      );
+    }
+    vectors.forEach((vector, offset) => {
+      validateVector(vector, provider);
+      const similarity = cosineSimilarity(queryVector, vector);
+      if (similarity < threshold) return;
+      const target = rankedFiles[start + offset];
+      if (!target) return;
+      target.evidence.push({
+        kind: "semantic",
+        score: Math.max(1, Math.round(weight * similarity)),
+        detail: `${provider.id}による意味類似度 ${similarity.toFixed(3)}`
+      });
+      target.score = sumEvidence(target.evidence);
+      target.direct = true;
+      target.relation = "direct";
+      matchedFiles += 1;
+    });
+  }
+
+  return {
+    provider: provider.id,
+    dimensions: provider.dimensions,
+    threshold,
+    matchedFiles
+  };
 }
 
 function rankFile(file: DiscoveryFile, terms: DiscoveryQueryTerm[]): RankedDiscoveryFile {
@@ -264,4 +356,32 @@ function compareRankedFiles(left: RankedDiscoveryFile, right: RankedDiscoveryFil
     Number(right.direct) - Number(left.direct) ||
     left.path.localeCompare(right.path, "en")
   );
+}
+
+function validateVector(
+  vector: number[] | undefined,
+  provider: { id: string; dimensions: number }
+): asserts vector is number[] {
+  if (
+    !vector ||
+    vector.length !== provider.dimensions ||
+    vector.some((value) => !Number.isFinite(value))
+  ) {
+    throw new Error(`${provider.id}が不正なEmbedding vectorを返しました。`);
+  }
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  const error = new Error("多言語Embeddingをキャンセルしました。");
+  error.name = "AbortError";
+  throw error;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function detail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

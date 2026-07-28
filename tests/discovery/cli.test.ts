@@ -38,9 +38,11 @@ describe("feature-discovery CLI", () => {
       schemaVersion: string;
       results: Array<{ path: string; evidence: unknown[] }>;
       index: { indexedFiles: number };
+      embedding?: { provider: string };
     };
     expect(result.schemaVersion).toBe("1.0");
     expect(result.index.indexedFiles).toBe(3);
+    expect(result.embedding?.provider).toBe("local-multilingual-concept-subword-v1");
     expect(result.results[0].path).toBe("src/pages/LoginPage.tsx");
     expect(result.results[0].evidence.length).toBeGreaterThan(0);
     expect(stdout).not.toContain("SECRET_SOURCE_MARKER");
@@ -78,6 +80,30 @@ describe("feature-discovery CLI", () => {
 
     expect(exitCode).toBe(1);
     expect(stderr).toContain("0～5");
+  });
+
+  it("--embedding offで意味類似度だけを無効化する", async () => {
+    const root = await createProject();
+    let stdout = "";
+    const exitCode = await runFeatureDiscoveryCli(
+      ["login", "--root", root, "--format", "json", "--embedding", "off"],
+      {
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: () => undefined
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    const result = JSON.parse(stdout) as {
+      embedding?: unknown;
+      results: Array<{ evidence: Array<{ kind: string }> }>;
+    };
+    expect(result.embedding).toBeUndefined();
+    expect(
+      result.results.flatMap((file) => file.evidence).some((item) => item.kind === "semantic")
+    ).toBe(false);
   });
 });
 

@@ -2,8 +2,8 @@
  * @feature-context
  * @feature feature discovery, query expansion, synonym search, multilingual search
  * @role 日本語・英語の機能名を正規化し、説明可能な関連語へ決定的に展開する
- * @entry expandDiscoveryQuery
- * @flow raw feature query -> normalization -> concept match -> weighted related terms
+ * @entry expandDiscoveryQuery, detectDiscoveryConcepts
+ * @flow raw feature query or indexed text -> normalization -> concept match -> weighted related terms
  * @related ranker.ts, embedding.ts
  * @caution 関連語は候補発見の補助であり、完全一致と同じ重みを与えない
  */
@@ -13,12 +13,12 @@ import type {
   DiscoveryQueryTerm
 } from "./types.js";
 
-interface Concept {
+export interface DiscoveryConcept {
   id: string;
-  terms: string[];
+  terms: readonly string[];
 }
 
-const concepts: Concept[] = [
+export const DISCOVERY_CONCEPTS: readonly DiscoveryConcept[] = [
   {
     id: "authentication",
     terms: [
@@ -165,7 +165,7 @@ export function expandDiscoveryQuery(raw: string): DiscoveryQuery {
   }
 
   const matchedConcepts: string[] = [];
-  for (const concept of concepts) {
+  for (const concept of DISCOVERY_CONCEPTS) {
     const normalizedConceptTerms = concept.terms.flatMap(tokenize);
     if (!originalValues.some((value) => normalizedConceptTerms.includes(value))) continue;
     matchedConcepts.push(concept.id);
@@ -185,6 +185,15 @@ export function expandDiscoveryQuery(raw: string): DiscoveryQuery {
     terms: [...terms.values()],
     concepts: matchedConcepts
   };
+}
+
+export function detectDiscoveryConcepts(value: string): string[] {
+  const values = new Set(tokenize(value));
+  return DISCOVERY_CONCEPTS.filter((concept) =>
+    concept.terms
+      .flatMap(tokenize)
+      .some((term) => values.has(term))
+  ).map((concept) => concept.id);
 }
 
 export function normalizeDiscoveryText(value: string): string {

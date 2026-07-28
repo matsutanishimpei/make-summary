@@ -4,7 +4,7 @@
 
 ローカル機能探索は、コード全文を最初から外部AIへ渡さず、PC内で「どのファイルが指定機能に関係しそうか」を絞るためのcoreです。
 
-現在の段階では、安全なファイル走査、構造化コメント、通常コメント、シンボルの索引、project内importグラフ、根拠付き順位付け、同じcoreを直接利用する薄いCLIを提供します。次の段階で多言語Embeddingを同じcoreへ追加します。
+安全なファイル走査、構造化コメント、通常コメント、シンボルの索引、project内importグラフ、ローカル多言語Embedding、根拠付き順位付け、同じcoreを直接利用する薄いCLIを提供します。
 
 ```mermaid
 flowchart LR
@@ -20,7 +20,9 @@ flowchart LR
     Imports --> Index
     Index --> Graph["project内ImportGraph"]
     Graph --> Dependencies["依存先と利用元を<br/>depth指定で展開"]
-    Index --> Rank["根拠ごとのscore"]
+    Index --> Embed["多言語Embedding<br/>概念 + subword"]
+    Index --> Rank["文字列根拠ごとのscore"]
+    Embed --> Rank
     Dependencies --> Rank
     Rank --> Candidates["説明可能な候補順"]
     Candidates --> CLI["feature-discovery CLI<br/>text / JSON"]
@@ -104,6 +106,7 @@ tsconfig path alias、webpack alias、動的に組み立てたimport、実行時
 | 通常comment・docstring | 110 | 人が記述した意味 |
 | import specifier | 90 | import文に現れる関連名 |
 | source sample | 60 | 先頭sample内の文字列 |
+| 多言語Embedding | 類似度 × 160 | 日本語・英語の概念とsubwordの近さ |
 | 一般的なsource directory | 50 | `src`、`app`、`api`など |
 | source file | 30 | source拡張子 |
 | 80KB以下 | 10 | 全体を扱いやすい |
@@ -135,7 +138,35 @@ tsconfig path alias、webpack alias、動的に組み立てたimport、実行時
 
 ### 現在の関連語展開
 
-認証、通知、課金、account、権限、検索、file transfer、message、設定、注文の日本語・英語辞書を内蔵しています。辞書にない語も元のqueryとして検索します。関連語辞書は決定的で説明しやすい一方、未知の表現には弱いため、後続段階で多言語Embeddingを追加します。
+認証、通知、課金、account、権限、検索、file transfer、message、設定、注文の日本語・英語辞書を内蔵しています。辞書にない語も元のqueryとして検索します。関連語辞書は決定的で、どの語が展開されたかをquery結果で確認できます。
+
+### 多言語Embedding
+
+標準の`LocalMultilingualEmbedding`は、日本語・英語の既知概念を共通tokenへ正規化し、単語と2～4文字のsubwordを384次元へhashingしてL2正規化します。queryとファイル索引のcosine類似度が既定の0.28以上なら、`semantic` evidenceとして「provider ID、類似度、加点」を返します。
+
+```mermaid
+flowchart LR
+    Query["ログイン機能"] --> Concepts["concept: authentication"]
+    IndexText["AuthService<br/>credential・session"] --> Concepts
+    Concepts --> Vector["384次元vector"]
+    Subword["token・2～4文字subword"] --> Vector
+    Vector --> Cosine["cosine類似度"]
+    Cosine --> Evidence["semantic evidence<br/>類似度 × 160"]
+```
+
+これは学習済みニューラルモデルではなく、追加ダウンロード不要で決定的に動く基準実装です。そのため既知概念の日本語・英語対応、表記揺れ、語形の近さには有効ですが、辞書にも字面にも現れない未知概念の理解には限界があります。
+
+coreは実装ではなく次のIFへ依存します。
+
+```ts
+interface EmbeddingProvider {
+  readonly id: string;
+  readonly dimensions: number;
+  embed(texts: string[], signal?: AbortSignal): Promise<number[][]>;
+}
+```
+
+rankerは128ファイルずつ処理し、全vectorをメモリへ保持しません。providerの異常時は警告を残して文字列順位へfallbackし、キャンセルはfallbackせず上位へ伝えます。将来ONNX等の学習済みローカルモデルを追加する場合も、同じIFを実装すれば順位付け・CLI・Gemini API snapshotを変更せず差し替えられます。
 
 ### Gemini APIとの接続
 
@@ -159,10 +190,12 @@ flowchart LR
 ```powershell
 node dist/node/discovery-cli/index.js "ログイン機能" --root . --max 20 --explain
 node dist/node/discovery-cli/index.js "通知機能" --root . --format json
+node dist/node/discovery-cli/index.js "通知機能" --root . --embedding off
 ```
 
 - `text`は候補path、score、relationを表示し、`--explain`で根拠を展開する
 - `json`はquery、候補、根拠、未解決import、警告を機械可読で返す
+- `--embedding off`で辞書・文字列・import graphだけの順位へ切り替えられる
 - どちらもsource sampleやコード本文を出力しない
 - ファイルを書き込まず、外部AIやネットワークを呼ばない
 - SIGINT / SIGTERMを`AbortSignal`として走査へ伝える

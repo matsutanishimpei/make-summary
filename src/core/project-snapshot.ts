@@ -1,10 +1,10 @@
 /**
  * @feature-context
- * @feature Gemini API, feature discovery, explainable ranking, safe project snapshot
- * @role 安全なproject索引を作り、local ranking上位の実file本文だけをGemini API入力へ収める
+ * @feature Gemini API, feature discovery, multilingual embedding, explainable ranking, safe project snapshot
+ * @role 安全なproject索引を作り、多言語local ranking上位の実file本文だけをGemini API入力へ収める
  * @entry buildProjectSnapshot
- * @flow safe scan -> discovery metadata -> import graph -> ranking -> bounded API context
- * @related discovery/ranker.ts, discovery/import-graph.ts, gemini-api.ts
+ * @flow safe scan -> discovery metadata -> embedding + import graph -> ranking -> bounded API context
+ * @related discovery/embedding.ts, discovery/ranker.ts, discovery/import-graph.ts, gemini-api.ts
  * @caution ranking後もgitignore・realpath・secretを送信直前に再検証する
  */
 
@@ -198,7 +198,8 @@ export async function buildProjectSnapshot(
     discoveryIndex,
     buildImportGraph(discoveryIndex),
     feature,
-    { maxResults: entries.length, graphDepth: 2 }
+    { maxResults: entries.length, graphDepth: 2 },
+    signal
   );
   const rankedByPath = new Map(ranking.files.map((file) => [file.path, file]));
   for (const entry of entries) {
