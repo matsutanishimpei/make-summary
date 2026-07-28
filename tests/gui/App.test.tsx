@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/renderer/App";
 import type { BuildResult } from "../../src/core/types";
 
@@ -51,6 +51,8 @@ const result: BuildResult = {
 };
 
 describe("App", () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     Object.defineProperty(globalThis, "crypto", {
       value: { randomUUID: () => "job-1" },
@@ -77,7 +79,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("調べたい機能・目的"), {
       target: { value: "ログイン機能" }
     });
-    fireEvent.change(screen.getByLabelText("調査に使うAI CLI"), {
+    fireEvent.change(screen.getByLabelText("調査に使うAI"), {
       target: { value: "codex" }
     });
     expect(generate).toBeEnabled();
@@ -90,5 +92,34 @@ describe("App", () => {
     );
     expect(await screen.findByRole("heading", { name: "生成結果" })).toBeInTheDocument();
     expect(screen.getByText("01-overview.md")).toBeInTheDocument();
+  });
+
+  it("Gemini APIを選択し、一時的なAPIキーとモデルを渡せる", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "フォルダを選択" }));
+    await waitFor(() => expect(screen.getByLabelText("プロジェクトフォルダ")).toHaveValue("C:\\project"));
+    fireEvent.change(screen.getByLabelText("調べたい機能・目的"), {
+      target: { value: "通知機能" }
+    });
+    fireEvent.change(screen.getByLabelText("調査に使うAI"), {
+      target: { value: "gemini-api" }
+    });
+    fireEvent.change(screen.getByLabelText("Gemini APIキー"), {
+      target: { value: "temporary-key" }
+    });
+    fireEvent.change(screen.getByLabelText("モデル"), {
+      target: { value: "gemini-test" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "コンテキストを生成" }));
+    await waitFor(() =>
+      expect(window.featureContext.start).toHaveBeenCalledWith(
+        "job-1",
+        expect.objectContaining({
+          provider: "gemini-api",
+          geminiApiKey: "temporary-key",
+          geminiApiModel: "gemini-test"
+        })
+      )
+    );
   });
 });

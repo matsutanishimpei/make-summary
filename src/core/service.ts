@@ -32,11 +32,14 @@ export class FeatureContextService {
       const outputDir = resolveOutputDir(projectRoot, options.outputDir, options.name ?? options.feature);
       const provider = options.provider ?? "gemini";
       const providerName = providerLabels[provider];
-      const runner = this.resolveRunner(provider);
+      const runner = this.resolveRunner(provider, {
+        geminiApiKey: options.geminiApiKey,
+        geminiApiModel: options.geminiApiModel
+      });
       throwIfAborted(signal);
       if (!options.dryRun && !options.force) await assertOutputAvailable(outputDir);
 
-      report({ stage: "checking-cli", message: `${providerName} CLIを確認中` });
+      report({ stage: "checking-cli", message: `${providerName}を確認中` });
       const info = await runner.inspect(signal);
       report({ stage: "investigating", message: "コードベースを調査中" });
       const investigation = await runner.investigate({
@@ -69,6 +72,7 @@ export class FeatureContextService {
         maxOutputFiles: options.maxOutputFiles,
         maxTotalChars: options.maxTotalChars,
         maxFileChars: options.maxFileChars ?? Math.min(60_000, options.maxTotalChars),
+        geminiApiModel: provider === "gemini-api" ? info.version : undefined,
         provider,
         cliVersion: info.version,
         gitCommitId,
@@ -105,7 +109,7 @@ export class FeatureContextService {
       report({ stage: "collecting", message: "選択したコードを収集中" });
       const collection = await collectSelectedFiles(projectRoot, validation.records);
       throwIfAborted(signal);
-      report({ stage: "packing", message: "AI CLIを再実行せずbundleを再構築中" });
+      report({ stage: "packing", message: "AIを再実行せずbundleを再構築中" });
       const rebuilt = await packageBundle({
         projectRoot,
         outputDir,
@@ -117,6 +121,7 @@ export class FeatureContextService {
         maxOutputFiles: options.maxOutputFiles ?? manifest.options.maxOutputFiles,
         maxTotalChars: options.maxTotalChars ?? manifest.options.maxTotalChars,
         maxFileChars: manifest.options.maxFileChars,
+        geminiApiModel: manifest.options.geminiApiModel,
         provider: manifest.provider.id,
         cliVersion: manifest.provider.cliVersion,
         gitCommitId: await getGitCommitId(projectRoot),

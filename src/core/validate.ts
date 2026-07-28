@@ -4,9 +4,9 @@ import createIgnore from "ignore";
 import { FeatureContextError } from "./errors.js";
 import type { InvestigationFile, ValidationRecord } from "./types.js";
 
-const blockedDirectories = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
-const blockedExactNames = new Set([".env", "id_rsa", "id_ed25519"]);
-const blockedExtensions = new Set([".pem", ".key", ".p12", ".pfx"]);
+export const blockedDirectories = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
+export const blockedExactNames = new Set([".env", "id_rsa", "id_ed25519"]);
+export const blockedExtensions = new Set([".pem", ".key", ".p12", ".pfx"]);
 
 export interface ValidationOutcome {
   records: ValidationRecord[];
@@ -74,13 +74,7 @@ export async function validateRelatedFiles(
     }
     seen.add(dedupeKey);
     const segments = normalized.split("/");
-    const basename = segments.at(-1)!.toLowerCase();
-    if (
-      segments.some((segment) => blockedDirectories.has(segment.toLowerCase())) ||
-      blockedExactNames.has(basename) ||
-      basename.startsWith(".env.") ||
-      blockedExtensions.has(path.posix.extname(basename))
-    ) {
+    if (matchesBuiltInExclusion(normalized)) {
       exclude("秘密情報または生成物の除外ルールに一致");
       continue;
     }
@@ -105,7 +99,7 @@ export async function validateRelatedFiles(
       try {
         const sample = Buffer.alloc(Math.min(8192, stat.size));
         await handle.read(sample, 0, sample.length, 0);
-        if (isBinary(sample)) {
+        if (isBinaryBuffer(sample)) {
           exclude("バイナリファイル");
           continue;
         }
@@ -148,7 +142,18 @@ function isInside(root: string, candidate: string): boolean {
   return relative !== "" && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
 }
 
-function isBinary(buffer: Buffer): boolean {
+export function matchesBuiltInExclusion(relativePath: string): boolean {
+  const segments = relativePath.replaceAll("\\", "/").split("/");
+  const basename = segments.at(-1)!.toLowerCase();
+  return (
+    segments.some((segment) => blockedDirectories.has(segment.toLowerCase())) ||
+    blockedExactNames.has(basename) ||
+    basename.startsWith(".env.") ||
+    blockedExtensions.has(path.posix.extname(basename))
+  );
+}
+
+export function isBinaryBuffer(buffer: Buffer): boolean {
   if (buffer.includes(0)) return true;
   try {
     new TextDecoder("utf-8", { fatal: true }).decode(buffer);

@@ -42,7 +42,7 @@ app.whenReady().then(async () => {
       state.title !== "Feature Context Builder" ||
       state.api !== "function" ||
       state.generateButton !== "コンテキストを生成" ||
-      JSON.stringify(state.providers) !== JSON.stringify(["gemini", "codex"])
+      JSON.stringify(state.providers) !== JSON.stringify(["gemini", "gemini-api", "codex"])
     ) {
       throw new Error(`Unexpected renderer state: ${JSON.stringify(state)} ${preloadFailure}`);
     }

@@ -72,6 +72,26 @@ describe("FeatureContextService", () => {
     expect(result.manifest.provider).toEqual({ id: "codex", cliVersion: "0.0.0-mock" });
   });
 
+  it("Gemini APIキーはrunnerへだけ渡し、manifestへ保存しない", async () => {
+    const runner = new MockRunner(investigation(), undefined, "gemini-api");
+    let resolvedKey: string | undefined;
+    const service = new FeatureContextService((_provider, config) => {
+      resolvedKey = config?.geminiApiKey;
+      return runner;
+    });
+    const result = await service.build(
+      options({
+        name: "gemini-api",
+        provider: "gemini-api",
+        geminiApiKey: "never-persist-this",
+        geminiApiModel: "gemini-test"
+      })
+    );
+    expect(resolvedKey).toBe("never-persist-this");
+    expect(JSON.stringify(result.manifest)).not.toContain("never-persist-this");
+    expect(result.manifest.provider.id).toBe("gemini-api");
+  });
+
   it("多数の関連ソースでも調査件数を制限せず、成果物だけ最大5件にする", async () => {
     const files = [];
     for (let index = 0; index < 20; index += 1) {

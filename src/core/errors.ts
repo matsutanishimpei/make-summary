@@ -2,6 +2,10 @@ export type ErrorCode =
   | "CLI_NOT_FOUND"
   | "CLI_UNAUTHENTICATED"
   | "CLI_FAILED"
+  | "API_KEY_MISSING"
+  | "API_UNAUTHENTICATED"
+  | "API_RATE_LIMIT"
+  | "API_FAILED"
   | "TIMEOUT"
   | "CANCELLED"
   | "INVALID_JSON"
@@ -17,9 +21,13 @@ const messages: Record<ErrorCode, string> = {
   CLI_NOT_FOUND: "選択したAI CLIが見つかりません。インストール後、ターミナルでバージョンを確認してください。",
   CLI_UNAUTHENTICATED: "選択したAI CLIが認証されていません。ターミナルで認証を完了してください。",
   CLI_FAILED: "AI CLIの実行に失敗しました。詳細ログを確認してから再実行してください。",
-  TIMEOUT: "AI CLIの処理がタイムアウトしました。対象を絞るか、タイムアウト設定を見直してください。",
+  API_KEY_MISSING: "Gemini APIキーが入力されていません。Google AI Studioで取得したキーを入力してください。",
+  API_UNAUTHENTICATED: "Gemini APIキーが無効か、このモデルを利用する権限がありません。キーとモデル名を確認してください。",
+  API_RATE_LIMIT: "Gemini APIの利用上限に達しました。しばらく待つか、Google AI Studioで利用状況を確認してください。",
+  API_FAILED: "Gemini APIの実行に失敗しました。詳細ログを確認してから再実行してください。",
+  TIMEOUT: "AIによる調査がタイムアウトしました。対象を絞るか、タイムアウト設定を見直してください。",
   CANCELLED: "処理をキャンセルしました。入力内容を変更して再実行できます。",
-  INVALID_JSON: "AI CLIから有効なJSONを取得できませんでした。もう一度実行してください。",
+  INVALID_JSON: "AIから有効な調査JSONを取得できませんでした。もう一度実行してください。",
   NO_VALID_FILES: "安全に利用できる関連ファイルがありませんでした。調査対象または除外設定を確認してください。",
   ROOT_NOT_FOUND: "プロジェクトフォルダが存在しません。正しいフォルダを選択してください。",
   READ_DENIED: "プロジェクト内のファイルを読み取れません。アクセス権限を確認してください。",

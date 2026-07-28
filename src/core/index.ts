@@ -3,6 +3,8 @@ export * from "./errors.js";
 export * from "./cli-process.js";
 export * from "./investigation.js";
 export * from "./gemini.js";
+export * from "./gemini-api.js";
+export * from "./project-snapshot.js";
 export * from "./codex.js";
 export * from "./provider.js";
 export * from "./prompt.js";

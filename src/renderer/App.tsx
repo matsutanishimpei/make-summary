@@ -17,9 +17,12 @@ const baseProgressSteps: Array<{ stage: ProgressStage; label: string }> = [
 ];
 
 type RunState = "idle" | "running" | "completed" | "error" | "cancelled";
+const defaultGeminiApiModel = "gemini-3.5-flash";
 
 export function App() {
   const [provider, setProvider] = useState<AiProvider>("gemini");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [geminiApiModel, setGeminiApiModel] = useState(defaultGeminiApiModel);
   const [projectRoot, setProjectRoot] = useState("");
   const [feature, setFeature] = useState("");
   const [summary, setSummary] = useState(true);
@@ -48,16 +51,30 @@ export function App() {
       projectRoot,
       feature: feature.trim(),
       provider,
+      ...(provider === "gemini-api"
+        ? { geminiApiKey, geminiApiModel: geminiApiModel.trim() }
+        : {}),
       summary,
       concat,
       maxOutputFiles: maxFiles,
       maxTotalChars: maxChars
     }),
-    [projectRoot, feature, provider, summary, concat, maxFiles, maxChars]
+    [
+      projectRoot,
+      feature,
+      provider,
+      geminiApiKey,
+      geminiApiModel,
+      summary,
+      concat,
+      maxFiles,
+      maxChars
+    ]
   );
-  const providerName = provider === "codex" ? "Codex" : "Gemini";
+  const providerName =
+    provider === "codex" ? "Codex CLI" : provider === "gemini-api" ? "Gemini API" : "Gemini CLI";
   const progressSteps = baseProgressSteps.map((step) =>
-    step.stage === "checking-cli" ? { ...step, label: `${providerName} CLIを確認中` } : step
+    step.stage === "checking-cli" ? { ...step, label: `${providerName}を確認中` } : step
   );
 
   const canGenerate =
@@ -77,7 +94,7 @@ export function App() {
     const id = crypto.randomUUID();
     setJobId(id);
     setRunState("running");
-    setProgress({ stage: "checking-cli", message: `${providerName} CLIを確認中` });
+    setProgress({ stage: "checking-cli", message: `${providerName}を確認中` });
     setError(null);
     setNotice("");
     setPreview(null);
@@ -130,7 +147,7 @@ export function App() {
         force: true
       });
       acceptResult(next);
-      setNotice("AI CLIを再実行せず、選択内容からbundleを再構築しました。");
+      setNotice("AIを再実行せず、選択内容からbundleを再構築しました。");
     } catch (caught) {
       const problem = normalizeError(caught);
       setError({ message: problem.message, details: problem.details });
@@ -172,7 +189,7 @@ export function App() {
           <p className="eyebrow">READ-ONLY CODE RESEARCH</p>
           <h1>Feature Context Builder</h1>
           <p className="subtitle">
-            調べたい機能を指定すると、選択したAI CLIが関連コードを探し、ChatGPTへ添付しやすいMarkdownに整理します。
+            調べたい機能を指定すると、選択したAIが関連コードを探し、ChatGPTへ添付しやすいMarkdownに整理します。
           </p>
         </div>
         <span className={`status-badge status-${runState}`}>
@@ -228,7 +245,7 @@ export function App() {
           </div>
 
           <div className="field">
-            <label htmlFor="provider">調査に使うAI CLI</label>
+            <label htmlFor="provider">調査に使うAI</label>
             <select
               id="provider"
               value={provider}
@@ -236,10 +253,51 @@ export function App() {
               disabled={runState === "running"}
             >
               <option value="gemini">Gemini CLI</option>
+              <option value="gemini-api">Gemini API</option>
               <option value="codex">Codex CLI</option>
             </select>
-            <small>選択したCLIを読み取り専用で実行します。各CLIのインストールと認証が必要です。</small>
+            <small>
+              CLIは読み取り専用で実行します。Gemini APIでは、安全性を検査したコード索引をGoogleへ送信します。
+            </small>
           </div>
+
+          {provider === "gemini-api" && (
+            <div className="api-settings" aria-label="Gemini API設定">
+              <div className="field">
+                <label htmlFor="gemini-api-key">Gemini APIキー</label>
+                <input
+                  id="gemini-api-key"
+                  type="password"
+                  value={geminiApiKey}
+                  onChange={(event) => setGeminiApiKey(event.target.value)}
+                  placeholder="Google AI Studioで取得したAPIキー"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={runState === "running"}
+                />
+                <small>
+                  このキーは成果物や設定ファイルへ保存しません。未入力時はGEMINI_API_KEYを使用します。
+                </small>
+              </div>
+              <div className="field">
+                <label htmlFor="gemini-api-model">モデル</label>
+                <input
+                  id="gemini-api-model"
+                  value={geminiApiModel}
+                  onChange={(event) => setGeminiApiModel(event.target.value)}
+                  spellCheck={false}
+                  disabled={runState === "running"}
+                />
+                <small>
+                  既定値は無料枠で利用可能な安定版Flashです。利用できない場合はAI Studioのモデル名へ変更してください。
+                </small>
+              </div>
+              <p className="api-disclosure">
+                Gemini APIを選ぶと、.env・秘密鍵・gitignore対象・バイナリ等を除外したコード内容が外部APIへ送信されます。
+                送信上限を超える部分はパス一覧だけを利用します。
+              </p>
+            </div>
+          )}
 
           <div className="option-grid">
             <label className="check-card">
@@ -322,7 +380,7 @@ export function App() {
           {error && (
             <div className="error-box" role="alert">
               <strong>{error.message}</strong>
-              <p>入力や選択したAI CLIの状態を確認して、もう一度実行できます。</p>
+              <p>入力や選択したAIの認証状態を確認して、もう一度実行できます。</p>
               <details><summary>技術的な詳細</summary><pre>{errorDetails}</pre></details>
             </div>
           )}
@@ -383,7 +441,7 @@ function ResultPanel(props: ResultPanelProps) {
 
       <div className="metrics">
         <Metric
-          label={`${manifest.provider.id === "codex" ? "Codex" : "Gemini"}が検出`}
+          label={`${providerDisplayName(manifest.provider.id)}が検出`}
           value={`${manifest.validation.detected}件`}
         />
         <Metric label="コードへ採用" value={`${new Set(manifest.bundledSources.map((item) => item.path)).size}件`} />
@@ -410,7 +468,7 @@ function ResultPanel(props: ResultPanelProps) {
 
       <div className="source-selection">
         <div className="subheading">
-          <div><h3>関連ソースの選択</h3><p>変更後はAI CLIを再実行せず、bundleだけを再構築できます。</p></div>
+          <div><h3>関連ソースの選択</h3><p>変更後はAIを再実行せず、bundleだけを再構築できます。</p></div>
           <button type="button" className="secondary" onClick={props.onRebuild} disabled={props.running}>
             選択内容でbundleを再構築
           </button>
@@ -475,6 +533,12 @@ function ResultPanel(props: ResultPanelProps) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function providerDisplayName(provider: AiProvider): string {
+  if (provider === "codex") return "Codex";
+  if (provider === "gemini-api") return "Gemini API";
+  return "Gemini";
 }
 
 function normalizeError(error: unknown): { message: string; code?: string; details?: string } {

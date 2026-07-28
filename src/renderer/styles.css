@@ -57,6 +57,9 @@ textarea { resize: vertical; line-height: 1.6; min-height: 94px; }
 .check-card span { flex: 1; }
 .limit-grid { margin-top: 20px; }
 .limit-grid .field { margin-bottom: 0; }
+.api-settings { margin: -2px 0 18px; padding: 16px; border: 1px solid #cddce1; border-radius: 8px; background: #f5fafb; }
+.api-settings > .field:last-of-type { margin-bottom: 10px; }
+.api-disclosure { margin: 0; color: #5d531f; background: #fff9dd; border: 1px solid #e7d98c; border-radius: 6px; padding: 10px 12px; font-size: 12px; line-height: 1.55; }
 .actions { display: flex; gap: 10px; border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; }
 button { border: 1px solid transparent; border-radius: 7px; padding: 9px 15px; font-weight: 650; }
 .primary { color: #fff; background: var(--accent); padding-inline: 22px; }

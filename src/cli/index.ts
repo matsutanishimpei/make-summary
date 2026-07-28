@@ -6,13 +6,14 @@ import type { AiProvider } from "../core/index.js";
 const program = new Command();
 program
   .name("feature-context")
-  .description("Gemini CLIまたはCodex CLIで指定機能に関連するコードコンテキストを生成します")
+  .description("Gemini CLI、Gemini API、Codex CLIで指定機能に関連するコードコンテキストを生成します")
   .argument("<feature>", "調べたい機能・目的")
   .addOption(
-    new Option("--provider <provider>", "調査に使うAI CLI")
-      .choices(["gemini", "codex"])
+    new Option("--provider <provider>", "調査に使うAI")
+      .choices(["gemini", "gemini-api", "codex"])
       .default("gemini")
   )
+  .option("--gemini-model <model>", "Gemini APIのモデル")
   .option("--root <path>", "プロジェクトルート", ".")
   .option("--out <path>", "出力ベース（プロジェクト内）")
   .option("--name <name>", "成果物ディレクトリ名")
@@ -35,6 +36,7 @@ program
           projectRoot: flags.root,
           feature,
           provider: flags.provider as AiProvider,
+          geminiApiModel: flags.geminiModel,
           outputDir: flags.out,
           name: flags.name,
           summary: flags.summary,

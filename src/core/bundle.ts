@@ -23,6 +23,7 @@ interface PackageInput {
   maxOutputFiles: number;
   maxTotalChars: number;
   maxFileChars: number;
+  geminiApiModel?: string;
   provider: Manifest["provider"]["id"];
   cliVersion: string;
   gitCommitId: string | null;
@@ -118,7 +119,7 @@ export async function packageBundle(input: PackageInput): Promise<Manifest> {
         reason:
           record.exclusionReason ??
           (!record.included
-            ? "ユーザーまたはAI CLIの選択によりコード連結の対象外"
+            ? "ユーザーまたはAIの選択によりコード連結の対象外"
             : "文字数上限または添付用ファイル数上限のため未収録")
       }));
   }
@@ -161,7 +162,8 @@ export async function packageBundle(input: PackageInput): Promise<Manifest> {
       concat: input.concat,
       maxOutputFiles: input.maxOutputFiles,
       maxTotalChars: input.maxTotalChars,
-      maxFileChars: input.maxFileChars
+      maxFileChars: input.maxFileChars,
+      ...(input.geminiApiModel ? { geminiApiModel: input.geminiApiModel } : {})
     },
     provider: {
       id: input.provider,
@@ -276,7 +278,7 @@ function renderOverview(
     "",
     `生成日時: ${input.generatedAt}`,
     `GitコミットID: ${input.gitCommitId ?? "取得できませんでした"}`,
-    `調査CLI: ${input.provider === "codex" ? "Codex" : "Gemini"} (${input.cliVersion})`,
+    `調査AI: ${providerName(input.provider)} (${input.cliVersion})`,
     "",
     "## 関連コードツリー",
     "",
@@ -328,7 +330,7 @@ function renderOverview(
       "",
       "## 機能要約",
       "",
-      input.investigation.overview || "AI CLIから機能全体の要約は返されませんでした。",
+      input.investigation.overview || "AIから機能全体の要約は返されませんでした。",
       "",
       "### 主要コンポーネントとファイル別要約",
       "",
@@ -356,7 +358,7 @@ function initialOmissions(
     reason:
       record.exclusionReason ??
       (!record.included
-        ? "ユーザーまたはAI CLIの選択によりコード連結の対象外"
+        ? "ユーザーまたはAIの選択によりコード連結の対象外"
         : !concat
           ? "コード連結オプションが無効"
           : maxOutputFiles <= 1
@@ -391,6 +393,12 @@ async function writeBundle(
     await fs.writeFile(path.join(bundleDir, item.name), item.content, "utf8");
   }
   await fs.writeFile(path.join(outputDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
+
+function providerName(provider: Manifest["provider"]["id"]): string {
+  if (provider === "codex") return "Codex CLI";
+  if (provider === "gemini-api") return "Gemini API";
+  return "Gemini CLI";
 }
 
 function sanitizeGroup(group: string): string {

@@ -1,5 +1,10 @@
 export type Priority = "core" | "supporting" | "test";
-export type AiProvider = "gemini" | "codex";
+export type AiProvider = "gemini" | "gemini-api" | "codex";
+
+export interface RunnerConfig {
+  geminiApiKey?: string;
+  geminiApiModel?: string;
+}
 
 export interface InvestigationFile {
   path: string;
@@ -38,7 +43,7 @@ export interface InvestigationRunner {
   investigate(request: InvestigationRunRequest): Promise<Investigation>;
 }
 
-export type RunnerResolver = (provider: AiProvider) => InvestigationRunner;
+export type RunnerResolver = (provider: AiProvider, config?: RunnerConfig) => InvestigationRunner;
 
 export type ProgressStage =
   | "checking-cli"
@@ -56,6 +61,9 @@ export interface ProgressEvent {
 
 export interface BuildOptions {
   provider?: AiProvider;
+  /** Gemini APIでのみ使用する一時的な値。manifestへは保存しない。 */
+  geminiApiKey?: string;
+  geminiApiModel?: string;
   projectRoot: string;
   feature: string;
   outputDir?: string;
@@ -112,6 +120,7 @@ export interface Manifest {
     maxOutputFiles: number;
     maxTotalChars: number;
     maxFileChars: number;
+    geminiApiModel?: string;
   };
   provider: {
     id: AiProvider;

@@ -1,6 +1,6 @@
 # Feature Context Builder
 
-Feature Context Builder は、プロジェクトフォルダと「ログイン機能」「通知機能」などの調査対象を指定し、インストール済みの Gemini CLI または Codex CLI にコードベースを調査させるWindows対応デスクトップツールです。関連コードツリー、選定理由、任意の要約、任意の実コード連結を、ChatGPTへ添付しやすい最大5件のMarkdownへ整理します。
+Feature Context Builder は、プロジェクトフォルダと「ログイン機能」「通知機能」などの調査対象を指定し、Gemini CLI、Gemini API、または Codex CLI にコードベースを調査させるWindows対応デスクトップツールです。関連コードツリー、選定理由、任意の要約、任意の実コード連結を、ChatGPTへ添付しやすい最大5件のMarkdownへ整理します。
 
 調査するソースファイル数に上限5件を設けるものではありません。必要なソースを件数固定せず検証し、最終成果物だけを最大5件へ梱包します。
 
@@ -9,7 +9,7 @@ Feature Context Builder は、プロジェクトフォルダと「ログイン�
 - Windows 10/11（macOS/Linuxでも開発構成は動作しますが、主対象はWindowsです）
 - Node.js 20以上
 - npm
-- Gemini CLIまたはCodex CLI（利用する方だけで構いません）
+- Gemini CLI、Gemini APIキー、Codex CLIのいずれか（利用するものだけで構いません）
 - Git（コミットIDの記録に使用。Git管理外でも生成可能です）
 
 ## Gemini CLIの準備
@@ -33,6 +33,40 @@ gemini --help
 - [Gemini CLI 公式クイックスタート](https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/index.md)
 - [Gemini CLI CLIリファレンス](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/cli-reference.md)
 - [Gemini CLI Headless mode](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/headless.md)
+
+## Gemini APIの準備
+
+Gemini CLIのGoogleアカウント認証が利用できない場合は、Google AI StudioでGemini APIキーを作成し、GUIの「調査に使うAI」で「Gemini API」を選択してください。
+
+1. [Google AI StudioのAPIキーページ](https://aistudio.google.com/app/apikey)でキーを作成
+2. GUIの「Gemini APIキー」へ貼り付け
+3. 必要に応じてモデル名を変更
+4. コンテキストを生成
+
+既定モデルは `gemini-3.5-flash` です。GUIで入力したAPIキーはメモリ上で一時利用するだけで、`manifest.json`、bundle、設定ファイルへ保存しません。CLIから利用する場合は、コマンドライン引数ではなく環境変数を使います。
+
+Googleの無料枠では、送信した内容がサービス改善に利用される場合があります。機密コードで利用する前に、Google AI Studioのデータ利用条件と対象プロジェクトの方針を確認してください。
+
+```powershell
+$env:GEMINI_API_KEY="取得したAPIキー"
+node dist/node/cli/index.js "ログイン機能" --root . --provider gemini-api --summary --concat
+```
+
+Gemini APIはローカルフォルダを直接参照できません。そのためcoreが次の順で入力コンテキストを作ります。
+
+1. プロジェクト内の通常テキストファイルを決定的に走査
+2. `.gitignore`、秘密情報パス、生成物、バイナリ、シンボリックリンクを除外
+3. 全体のパス一覧と、関連度を優先したコード本文を最大600,000文字へ整理
+4. ファイル本文を「信頼できないデータ」と明示してGemini APIへ送信
+5. JSON Schemaによる構造化出力を要求
+6. coreでJSONを再検証し、不正な場合だけ1回補正を依頼
+7. 返された全パスを通常どおりcoreで再検証
+
+構造化出力はJSONの構文を安定させますが、パスの実在性や内容の正しさまでは保証しません。そのため、APIの返答を信用せず、CLI利用時と同じパス・秘密情報検査を必ず通します。
+
+- [Gemini APIの開始方法](https://ai.google.dev/gemini-api/docs/generate-content/get-started)
+- [Gemini APIの構造化出力](https://ai.google.dev/gemini-api/docs/generate-content/structured-output)
+- [Gemini APIの料金と無料枠](https://ai.google.dev/gemini-api/docs/pricing)
 
 ## Codex CLIの準備
 
@@ -66,11 +100,11 @@ npm run dev
 
 1. プロジェクトフォルダを選択
 2. 調べたい機能・目的を入力
-3. Gemini / Codex、要約、コード連結、最大ファイル数、文字数上限を指定
+3. Gemini CLI / Gemini API / Codex CLI、要約、コード連結、最大ファイル数、文字数上限を指定
 4. 生成し、進捗を確認（実行中はキャンセル可能）
 5. 結果と各Markdownをプレビュー
 6. 関連ソースを含める・除外する
-7. AI CLIを再実行せずbundleだけ再構築
+7. AIを再実行せずbundleだけ再構築
 8. 出力フォルダを開く、または `01-overview.md` をコピー
 
 既存成果物を上書きする場合、GUIは確認ダイアログを表示します。
@@ -84,6 +118,7 @@ node dist/node/cli/index.js "ログイン機能" --root .
 node dist/node/cli/index.js "ログイン機能" --root . --summary
 node dist/node/cli/index.js "ログイン機能" --root . --concat
 node dist/node/cli/index.js "ログイン機能" --root . --summary --concat
+node dist/node/cli/index.js "ログイン機能" --root . --provider gemini-api --summary --concat
 node dist/node/cli/index.js "ログイン機能" --root . --provider codex --summary --concat
 ```
 
@@ -98,7 +133,8 @@ feature-context "ログイン機能" --root . --summary --concat
 
 | オプション | 説明 | 既定値 |
 |---|---|---|
-| `--provider <gemini\|codex>` | 調査に使うAI CLI | `gemini` |
+| `--provider <gemini\|gemini-api\|codex>` | 調査に使うAI | `gemini` |
+| `--gemini-model <model>` | Gemini APIで使うモデル | `gemini-3.5-flash` |
 | `--root <path>` | 調査対象プロジェクト | `.` |
 | `--out <path>` | プロジェクト内の出力ベース | `.feature-context` |
 | `--name <name>` | 成果物ディレクトリ名 | 機能名から生成 |
@@ -110,7 +146,7 @@ feature-context "ログイン機能" --root . --summary --concat
 | `--verbose` | エラーの技術的詳細を表示 | 無効 |
 | `--force` | 既存成果物の上書きを許可 | 無効 |
 
-Ctrl+C / SIGTERM でキャンセルすると、実行中のAI CLI子プロセスも終了します。
+Ctrl+C / SIGTERM でキャンセルすると、実行中のAI CLI子プロセスまたはGemini APIのHTTP要求も終了します。Gemini APIキーは `GEMINI_API_KEY`、モデルの環境変数による既定値変更は `GEMINI_API_MODEL` でも指定できます。
 
 ## 出力構造
 
@@ -140,7 +176,9 @@ Electron Main
 feature-context-core
   ├─ InvestigationRunner interface
   │    ├─ GeminiCliRunner
+  │    ├─ GeminiApiRunner
   │    └─ CodexCliRunner
+  ├─ safe project snapshot for Gemini API
   ├─ JSON parser / prompt
   ├─ path・gitignore・binary・secret validation
   ├─ deterministic code tree
@@ -150,11 +188,14 @@ feature-context-core
 Thin CLI (同じcore)
 ```
 
-GUIのReactコンポーネントはAI CLIやファイルシステムを直接操作しません。CLI呼び出しは `InvestigationRunner` インターフェースで分離され、プロバイダー解決関数をモックへ差し替えられます。パス検証、コード収集、梱包はどちらのCLIでも同じcoreを通ります。
+GUIのReactコンポーネントはAI呼び出しやファイルシステムを直接操作しません。AI呼び出しは `InvestigationRunner` インターフェースで分離され、CLI実行やGemini API通信をモックへ差し替えられます。パス検証、コード収集、梱包はすべてのプロバイダーで同じcoreを通ります。
 
 ## セキュリティ上の注意
 
 - 選択したAI CLIは対象プロジェクトを作業ディレクトリとして起動します。
+- Gemini APIキーはHTTPヘッダーで送り、URL、ログ、manifest、bundleへ保存しません。
+- Gemini APIへ送る前にも `.gitignore`、秘密情報パス、バイナリ、秘密鍵らしい本文をローカルで除外します。
+- Gemini APIへ送るファイル本文を命令として扱わないよう、プロンプトインジェクション対策の境界を明示します。
 - 実行ファイルと引数を分離し、`shell: false` で起動します。
 - Windowsのnpm製 `.cmd` shimは実体のJavaScriptを検証・解決し、シェルを介さずに起動します。
 - 読み取り専用の指示に加え、Geminiでは利用可能なら `--approval-mode plan`、Codexでは `--sandbox read-only` を使います。
@@ -162,7 +203,7 @@ GUIのReactコンポーネントはAI CLIやファイルシステムを直接操
 - `.gitignore` 対象、バイナリ、重複、存在しないファイル、プロジェクト外参照、危険なシンボリックリンクをcore側で拒否します。
 - コード本文はAI CLIに再生成させず、検証済みの実ファイルを直接読みます。
 - 出力先はプロジェクト内だけに制限します。
-- 成果物は外部サービスへ自動送信されません。送付前に必ずプレビューしてください。
+- 成果物は外部サービスへ自動送信されません。Gemini APIを選んだ場合だけ、調査用コード索引がGoogleへ送信されます。送付前にGUIの説明を確認してください。
 
 ファイル名による基本的な秘密情報除外は行いますが、任意形式の埋め込みシークレットを完全には検出できません。成果物を共有する前に内容を確認してください。
 
@@ -175,7 +216,7 @@ npm run build
 npm run test:smoke
 ```
 
-テストは一時プロジェクトと `InvestigationRunner` のモックを使用し、実際のAI CLIやネットワークを呼びません。coreの正常系、プロバイダー選択、Codex JSONL解析、最大5件梱包、オプション、選択・再構築、危険パス、gitignore、秘密情報、バイナリ、不正JSON、CLI異常、タイムアウト、キャンセル、Windows日本語パス、文字数上限、コード一致、上書き防止を検証します。GUIは主要な初回入力、プロバイダー選択、生成操作を検証します。`test:smoke` は非表示のElectronウィンドウを起動し、React画面とsandboxed preload IPCが実際に読み込まれることを確認します。
+テストは一時プロジェクト、`InvestigationRunner`、Gemini API HTTP通信のモックを使用し、実際のAI CLIやネットワークを呼びません。coreの正常系、プロバイダー選択、Codex JSONL解析、Gemini APIの構造化出力・補正再試行・認証エラー・利用上限・キャンセル、安全なコード索引、最大5件梱包、オプション、選択・再構築、危険パス、gitignore、秘密情報、バイナリ、不正JSON、CLI異常、タイムアウト、Windows日本語パス、文字数上限、コード一致、上書き防止を検証します。GUIは主要な初回入力、3プロバイダーの選択、Gemini APIキー・モデル入力、生成操作を検証します。`test:smoke` は非表示のElectronウィンドウを起動し、React画面とsandboxed preload IPCが実際に読み込まれることを確認します。
 
 ## 現在の制限事項
 
@@ -183,5 +224,7 @@ npm run test:smoke
 - 1ファイルが大きすぎて上限に収まらない場合、現版は途中分割せず未収録としてmanifestへ記録します。
 - ルート `.gitignore` を評価します。サブディレクトリ固有の `.gitignore` の階層評価は未対応です。
 - GUIからAI CLIのタイムアウト値や追加除外パターンを変更する画面はありません。
+- Gemini APIへ送るコード本文は最大600,000文字です。超過分はパス一覧のみとなり、大規模リポジトリではCLIより調査精度が下がる場合があります。
+- Gemini APIの無料枠、利用可能モデル、レート制限、データ利用条件はGoogle側の設定と変更に依存します。
 - インストーラー生成、高度な配布署名、自動アップデートは未実装です。
-- Chrome拡張、ChatGPTの自動操作・送信、OpenAI API、Gemini API直接利用、クラウド保存、ソース編集・自動修正は実装しません。
+- Chrome拡張、ChatGPTの自動操作・送信、OpenAI API、クラウド保存、ソース編集・自動修正は実装しません。
