@@ -6,7 +6,7 @@ Feature Context Builder は、プロジェクトフォルダと「ログイン�
 
 調査するソースファイル数に上限5件を設けるものではありません。必要なソースを件数固定せず検証し、最終成果物だけを最大5件へ梱包します。
 
-ローカル機能探索は、構造化コメント、通常コメント、シンボル、project内import関係を索引し、依存先と利用元を循環安全にたどります。各候補は根拠ごとの点数付きで順位付けされ、Gemini APIへ送る本文の優先順へ利用されます。
+ローカル機能探索は、構造化コメント、通常コメント、シンボル、project内import関係を索引し、依存先と利用元を循環安全にたどります。日本語・英語の概念とsubwordによるローカルEmbeddingも含め、各候補を根拠ごとの点数付きで順位付けし、Gemini APIへ送る本文の優先順へ利用します。
 
 ## 関連ドキュメント
 
@@ -14,7 +14,7 @@ Feature Context Builder は、プロジェクトフォルダと「ログイン�
 - [プロダクト企画書](docs/product-overview.md) — 製品が必要な背景、課題、課題に対する機能、プロダクト原則
 - [開発ストーリー](docs/development-story.md) — 対話上の転機とcommitがこの順で入った理由
 - [構造化ファイルコメント](docs/structured-file-comments.md) — 機能、責務、入口、関連、変更時の注意をローカル探索へ伝える記法
-- [ローカル機能探索](docs/local-discovery.md) — 安全なシンボル・コメント索引と、今後のimport・順位付けpipeline
+- [ローカル機能探索](docs/local-discovery.md) — 安全な索引、import graph、多言語Embedding、説明可能な順位付け、専用CLI
 - [Android版 Tailscale・スマホ連携マニュアル](docs/android-tailscale-guide.md) — Androidでの初回接続と利用方法
 
 ## 必要環境
