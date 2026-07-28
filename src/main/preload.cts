@@ -5,6 +5,7 @@ import type { GatewayStatus, PairingInfo } from "../gateway/types.js";
 
 export interface DesktopApi {
   selectFolder(): Promise<string | null>;
+  selectFolders(): Promise<string[]>;
   start(jobId: string, options: BuildOptions): Promise<BuildResult>;
   rebuild(jobId: string, options: RebuildOptions): Promise<BuildResult>;
   cancel(jobId: string): Promise<boolean>;
@@ -14,7 +15,7 @@ export interface DesktopApi {
   copyOverview(filePath: string): Promise<void>;
   getRemoteStatus(): Promise<GatewayStatus>;
   setRemoteEnabled(enabled: boolean): Promise<GatewayStatus>;
-  registerRemoteProject(root: string, label?: string): Promise<GatewayStatus>;
+  registerRemoteProjects(roots: string[]): Promise<GatewayStatus>;
   removeRemoteProject(projectId: string): Promise<GatewayStatus>;
   revokeRemoteDevice(sessionId: string): Promise<GatewayStatus>;
   createRemotePairing(): Promise<PairingInfo>;
@@ -27,6 +28,7 @@ export interface DesktopApi {
 
 const api: DesktopApi = {
   selectFolder: () => ipcRenderer.invoke("dialog:select-folder"),
+  selectFolders: () => ipcRenderer.invoke("dialog:select-folders"),
   start: async (jobId, options) => unwrap(await ipcRenderer.invoke("job:start", jobId, options)),
   rebuild: async (jobId, options) => unwrap(await ipcRenderer.invoke("job:rebuild", jobId, options)),
   cancel: (jobId) => ipcRenderer.invoke("job:cancel", jobId),
@@ -42,8 +44,8 @@ const api: DesktopApi = {
   getRemoteStatus: async () => unwrap(await ipcRenderer.invoke("mobile:status")),
   setRemoteEnabled: async (enabled) =>
     unwrap(await ipcRenderer.invoke("mobile:set-enabled", enabled)),
-  registerRemoteProject: async (root, label) =>
-    unwrap(await ipcRenderer.invoke("mobile:register-project", root, label)),
+  registerRemoteProjects: async (roots) =>
+    unwrap(await ipcRenderer.invoke("mobile:register-projects", roots)),
   removeRemoteProject: async (projectId) =>
     unwrap(await ipcRenderer.invoke("mobile:remove-project", projectId)),
   revokeRemoteDevice: async (sessionId) =>

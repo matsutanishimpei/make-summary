@@ -70,8 +70,8 @@ export class RemoteController {
     this.options.onEnabledChanged?.(enabled);
   }
 
-  async registerProject(root: string, label?: string): Promise<RegisteredProject> {
-    return this.settings.registerProject(root, label);
+  async registerProjects(roots: string[]): Promise<RegisteredProject[]> {
+    return this.settings.registerProjects(roots);
   }
 
   async removeProject(projectId: string): Promise<boolean> {

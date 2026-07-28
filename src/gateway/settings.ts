@@ -15,6 +15,7 @@ const defaultSettings: GatewaySettings = {
   projects: [],
   sessions: []
 };
+const maxRegisteredProjects = 50;
 
 export class GatewaySettingsStore {
   private cached?: GatewaySettings;
@@ -72,6 +73,46 @@ export class GatewaySettingsStore {
     return structuredClone(registered);
   }
 
+  async registerProjects(rootInputs: string[]): Promise<RegisteredProject[]> {
+    const roots: string[] = [];
+    const seen = new Set<string>();
+    for (const rootInput of rootInputs) {
+      const root = await fs.realpath(path.resolve(rootInput));
+      if (!(await fs.stat(root)).isDirectory()) throw new Error("プロジェクトフォルダではありません。");
+      const key = normalizePathKey(root);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      roots.push(root);
+    }
+    if (!roots.length) return [];
+
+    const registered: RegisteredProject[] = [];
+    await this.update((settings) => {
+      const existingKeys = new Set(settings.projects.map((project) => normalizePathKey(project.root)));
+      const newProjectCount = roots.filter((root) => !existingKeys.has(normalizePathKey(root))).length;
+      if (settings.projects.length + newProjectCount > maxRegisteredProjects) {
+        throw new Error(`スマホ用プロジェクトは最大${maxRegisteredProjects}件まで登録できます。`);
+      }
+      for (const root of roots) {
+        const key = normalizePathKey(root);
+        const existing = settings.projects.find((project) => normalizePathKey(project.root) === key);
+        if (existing) {
+          registered.push(existing);
+          continue;
+        }
+        const project = {
+          id: randomUUID(),
+          label: normalizeLabel(undefined, path.basename(root)),
+          root,
+          createdAt: new Date().toISOString()
+        };
+        settings.projects.push(project);
+        registered.push(project);
+      }
+    });
+    return structuredClone(registered);
+  }
+
   async removeProject(projectId: string): Promise<boolean> {
     let removed = false;
     await this.update((settings) => {
@@ -123,7 +164,7 @@ function normalizeSettings(input: Partial<GatewaySettings>): GatewaySettings {
         : defaultSettings.port,
     publicUrl: normalizePublicUrl(input.publicUrl),
     projects: Array.isArray(input.projects)
-      ? input.projects.filter(isRegisteredProject).slice(0, 50)
+      ? input.projects.filter(isRegisteredProject).slice(0, maxRegisteredProjects)
       : [],
     sessions: Array.isArray(input.sessions)
       ? input.sessions.filter(isPairedSession).filter((session) => Date.parse(session.expiresAt) > now).slice(-20)

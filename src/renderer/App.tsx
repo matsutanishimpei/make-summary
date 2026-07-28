@@ -107,6 +107,15 @@ export function App() {
     if (selected) setProjectRoot(selected);
   }
 
+  async function addRemoteProjects() {
+    const selected = await window.featureContext.selectFolders();
+    if (!selected.length) return;
+    await remoteAction(
+      () => window.featureContext.registerRemoteProjects(selected),
+      `${selected.length}件のプロジェクト選択をスマホ利用へ反映しました。`
+    );
+  }
+
   async function generate(force = false) {
     const id = crypto.randomUUID();
     setJobId(id);
@@ -535,7 +544,6 @@ export function App() {
         {activeView === "mobile" && (
         <RemotePanel
           status={remoteStatus}
-          projectRoot={projectRoot}
           busy={remoteBusy}
           error={remoteError}
           notice={remoteNotice}
@@ -554,12 +562,7 @@ export function App() {
               "Tailscale Serveを設定しました。QRコードでスマホを登録できます。"
             )
           }
-          onRegisterProject={() =>
-            remoteAction(
-              () => window.featureContext.registerRemoteProject(projectRoot),
-              "現在のプロジェクトをスマホ利用に登録しました。"
-            )
-          }
+          onAddProjects={addRemoteProjects}
           onRemoveProject={(projectId) =>
             remoteAction(() => window.featureContext.removeRemoteProject(projectId))
           }
@@ -616,7 +619,6 @@ export function App() {
 
 interface RemotePanelProps {
   status: GatewayStatus | null;
-  projectRoot: string;
   busy: boolean;
   error: string;
   notice: string;
@@ -625,7 +627,7 @@ interface RemotePanelProps {
   onRefresh: () => void;
   onToggle: (enabled: boolean) => void;
   onConfigureTailscale: () => void;
-  onRegisterProject: () => void;
+  onAddProjects: () => void;
   onRemoveProject: (projectId: string) => void;
   onPair: () => void;
   onRevoke: (sessionId: string) => void;
@@ -715,14 +717,14 @@ function RemotePanel(props: RemotePanelProps) {
 
           <div className="remote-box">
             <div className="remote-box-heading">
-              <div><h3>利用可能なプロジェクト</h3><p>スマホから任意パスは指定できません。</p></div>
+              <div><h3>利用可能なプロジェクト</h3><p>複数フォルダをまとめて選択できます。スマホから任意パスは指定できません。</p></div>
               <button
                 type="button"
                 className="secondary"
-                onClick={props.onRegisterProject}
-                disabled={props.busy || !props.projectRoot.trim()}
+                onClick={props.onAddProjects}
+                disabled={props.busy}
               >
-                現在のフォルダを登録
+                プロジェクトを追加
               </button>
             </div>
             {status.projects.length ? (

@@ -71,6 +71,8 @@ app.whenReady().then(async () => {
       title: document.querySelector("h1")?.textContent,
       api: typeof window.featureContext?.start,
       remoteApi: typeof window.featureContext?.getRemoteStatus,
+      multiFolderApi: typeof window.featureContext?.selectFolders,
+      registerProjectsApi: typeof window.featureContext?.registerRemoteProjects,
       credentialApi: typeof window.featureContext?.getGeminiCredentialStatus,
       generateButton: document.querySelector("button.primary")?.textContent?.trim(),
       views: Array.from(document.querySelectorAll('[role="tab"]')).map((tab) => tab.textContent?.trim()),
@@ -82,6 +84,8 @@ app.whenReady().then(async () => {
       state.title !== "Feature Context Builder" ||
       state.api !== "function" ||
       state.remoteApi !== "function" ||
+      state.multiFolderApi !== "function" ||
+      state.registerProjectsApi !== "function" ||
       state.credentialApi !== "function" ||
       state.generateButton !== "コンテキストを生成" ||
       state.views.length !== 3 ||

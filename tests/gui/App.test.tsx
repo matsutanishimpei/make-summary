@@ -78,6 +78,10 @@ describe("App", () => {
     });
     window.featureContext = {
       selectFolder: vi.fn().mockResolvedValue("C:\\project"),
+      selectFolders: vi.fn().mockResolvedValue([
+        "C:\\projects\\project-a",
+        "D:\\日本語 projects\\project-b"
+      ]),
       start: vi.fn().mockResolvedValue(result),
       rebuild: vi.fn().mockResolvedValue(result),
       cancel: vi.fn().mockResolvedValue(true),
@@ -87,7 +91,7 @@ describe("App", () => {
       copyOverview: vi.fn().mockResolvedValue(undefined),
       getRemoteStatus: vi.fn().mockResolvedValue(gatewayStatus),
       setRemoteEnabled: vi.fn().mockResolvedValue({ ...gatewayStatus, enabled: true, running: true }),
-      registerRemoteProject: vi.fn().mockResolvedValue(gatewayStatus),
+      registerRemoteProjects: vi.fn().mockResolvedValue(gatewayStatus),
       removeRemoteProject: vi.fn().mockResolvedValue(gatewayStatus),
       revokeRemoteDevice: vi.fn().mockResolvedValue(gatewayStatus),
       createRemotePairing: vi.fn().mockResolvedValue({
@@ -157,16 +161,16 @@ describe("App", () => {
     );
   });
 
-  it("現在のプロジェクトをスマホ利用へ登録できる", async () => {
+  it("複数のプロジェクトフォルダを選択してスマホ利用へ一括登録できる", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "フォルダを選択" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("プロジェクトフォルダ")).toHaveValue("C:\\project")
-    );
     fireEvent.click(screen.getByRole("tab", { name: /スマホ版/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "現在のフォルダを登録" }));
+    fireEvent.click(await screen.findByRole("button", { name: "プロジェクトを追加" }));
+    await waitFor(() => expect(window.featureContext.selectFolders).toHaveBeenCalledOnce());
     await waitFor(() =>
-      expect(window.featureContext.registerRemoteProject).toHaveBeenCalledWith("C:\\project")
+      expect(window.featureContext.registerRemoteProjects).toHaveBeenCalledWith([
+        "C:\\projects\\project-a",
+        "D:\\日本語 projects\\project-b"
+      ])
     );
   });
 

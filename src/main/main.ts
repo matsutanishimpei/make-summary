@@ -123,6 +123,14 @@ function registerIpc(): void {
     return result.canceled ? null : result.filePaths[0];
   });
 
+  ipcMain.handle("dialog:select-folders", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory", "multiSelections"],
+      title: "スマホから利用するプロジェクトフォルダを選択"
+    });
+    return result.canceled ? [] : result.filePaths;
+  });
+
   ipcMain.handle("job:start", async (event, jobId: string, options: BuildOptions) =>
     safeInvoke(async () => {
       const resolvedOptions = await resolveDesktopBuildOptions(options, requireCredentialStore());
@@ -182,9 +190,12 @@ function registerIpc(): void {
     })
   );
 
-  ipcMain.handle("mobile:register-project", (_event, root: string, label?: string) =>
+  ipcMain.handle("mobile:register-projects", (_event, roots: string[]) =>
     safeInvoke(async () => {
-      await requireRemoteController().registerProject(root, label);
+      if (!Array.isArray(roots) || roots.some((root) => typeof root !== "string")) {
+        throw new Error("登録するプロジェクトフォルダが不正です。");
+      }
+      await requireRemoteController().registerProjects(roots);
       return requireRemoteController().status(getAutoStart());
     })
   );
