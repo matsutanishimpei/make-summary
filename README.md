@@ -114,6 +114,8 @@ npm run dev
 
 PCとスマートフォンに[Tailscale](https://tailscale.com/download)を入れ、同じアカウント（tailnet）へ接続すると、一般的な家庭回線やモバイル回線からも利用できます。ルーターのポート開放や固定IPは不要です。公開インターネットへは出さず、TailscaleのプライベートなHTTPS接続だけを使います。
 
+Androidでのインストールから初回接続、QR登録、ホーム画面追加、ZIPの添付、トラブル対応までは、[Android版 Tailscale・スマホ連携マニュアル](docs/android-tailscale-guide.md)で画面操作に沿って説明しています。
+
 初回設定はPCのGUIで行います。
 
 1. 通常どおりプロジェクトフォルダを選ぶ
