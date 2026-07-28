@@ -20,7 +20,7 @@
 | registry | AIのIDから対応するadapterを選ぶ登録簿 |
 | Port | applicationが外部機能を呼ぶためのIF。実装をテスト用に交換できる |
 | DTO | PC画面とmain process、またはスマホとGatewayの間で受け渡すデータ |
-| bundle | ChatGPTへ添付する最大5件のMarkdown |
+| bundle | ブラウザAIでの仕様検討と、開発エージェントへの引き渡しに再利用する最大5件のMarkdown |
 | manifest | 調査・検証・選択・成果物の情報を保存する内部管理用JSON |
 
 ## 2. 全体像
@@ -191,12 +191,14 @@ TypeScriptの型だけでは不正なIPC入力を防げないため、`DesktopBu
 
 ### 3.8 Markdown + manifest
 
-成果物は、人が読んでChatGPTへ添付するMarkdownと、機械が再構築に使う`manifest.json`に分けています。
+成果物は、人が読んでブラウザAIへ添付するMarkdownと、機械が再構築に使う`manifest.json`に分けています。
 
-- Markdown: 利用者とChatGPTが読む。最大5件
+- Markdown: 利用者とブラウザAIが読む。最大5件
 - manifest: 検証結果、選択、出力情報、警告、スキーマ版を保持する。添付件数には含めない
 
 manifestは読み込み時に実行時検証し、旧Gemini CLI専用形式は境界で現行形式へ移行します。
+
+bundleを一時的な画面表示ではなくファイルとして残すことには、費用面の設計理由もあります。仕様が変わるたびに開発エージェントへリポジトリを再探索させず、同じ検証済みbundleをブラウザAIとの複数回の対話で再利用できます。収録ソースだけを変えたい場合も、manifestからAIなしで再構築できます。これにより、開発エージェントのトークンは仕様確定後の実装とテストへ集中できます。
 
 ## 4. モジュール間の関係
 
