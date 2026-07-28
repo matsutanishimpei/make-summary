@@ -113,6 +113,39 @@ describe("FeatureContextService", () => {
     expect(result.manifest.bundleFiles.length).toBeLessThanOrEqual(5);
   });
 
+  it("同じグループのコードが1成果物へ収まらない場合も空き枠へ分割する", async () => {
+    const files = [];
+    for (let index = 0; index < 4; index += 1) {
+      const filePath = `src/large-${index}.ts`;
+      await write(filePath, `export const value${index} = "${"x".repeat(3_000)}";\n`);
+      files.push({
+        path: filePath,
+        role: `大きな処理 ${index}`,
+        reason: "同じ機能グループ",
+        priority: "core" as const,
+        group: "frontend",
+        recommended: true
+      });
+    }
+    const result = await createService(new MockRunner({ ...investigation(), files })).build(
+      options({
+        name: "split-same-group",
+        maxOutputFiles: 5,
+        maxFileChars: 5_000
+      })
+    );
+
+    expect(result.manifest.bundledSources).toHaveLength(4);
+    expect(result.manifest.bundleFiles.filter((file) => file.name !== "01-overview.md")).toHaveLength(4);
+    expect(result.manifest.bundleFiles.map((file) => file.name)).toEqual([
+      "01-overview.md",
+      "02-frontend.md",
+      "03-frontend-2.md",
+      "04-frontend-3.md",
+      "05-frontend-4.md"
+    ]);
+  });
+
   it("要約とコード連結を個別に無効化できる", async () => {
     const result = await createService(new MockRunner(investigation())).build(
       options({ name: "no-options", summary: false, concat: false })
@@ -130,6 +163,16 @@ describe("FeatureContextService", () => {
     const overview = await fs.readFile(result.manifest.bundleFiles[0].path, "utf8");
     expect(overview).toContain("## 機能要約");
     expect(overview).toContain("認証機能の要約");
+    expect(overview).toContain("### 主要コンポーネントの責務");
+    expect(overview).toContain("Login: 入力を受け付ける");
+    expect(overview).toContain("### 状態とデータの流れ");
+    expect(overview).toContain("フォームからセッションへ流れる");
+    expect(overview).toContain("### API");
+    expect(overview).toContain("POST /api/login");
+    expect(overview).toContain("### 外部依存");
+    expect(overview).toContain("外部IdP");
+    expect(overview).toContain("### 修正時の注意点");
+    expect(overview).toContain("セッション互換性を維持する");
   });
 
   it("ユーザー選択を優先し、Geminiを再実行せずbundleだけ再構築する", async () => {
@@ -177,6 +220,20 @@ describe("FeatureContextService", () => {
       code: "OUTPUT_EXISTS"
     });
     await expect(service.build(options({ name: "protected", force: true }))).resolves.toBeDefined();
+  });
+
+  it("force再生成は完成した成果物を入れ替え、管理外ファイルを保持する", async () => {
+    const service = createService(new MockRunner(investigation()));
+    const first = await service.build(options({ name: "atomic" }));
+    await fs.writeFile(path.join(first.outputDir, "notes.txt"), "利用者メモ", "utf8");
+    await fs.writeFile(path.join(first.outputDir, "bundle", "notes.txt"), "bundleメモ", "utf8");
+
+    const rebuilt = await service.build(options({ name: "atomic", force: true }));
+
+    expect(await fs.readFile(path.join(rebuilt.outputDir, "notes.txt"), "utf8")).toBe("利用者メモ");
+    expect(await fs.readFile(path.join(rebuilt.outputDir, "bundle", "notes.txt"), "utf8")).toBe("bundleメモ");
+    const siblings = await fs.readdir(path.dirname(rebuilt.outputDir));
+    expect(siblings.some((name) => name.includes(".atomic.stage-") || name.includes(".atomic.backup-"))).toBe(false);
   });
 
   it("manifestがなくても既存ファイルのある出力先を上書きしない", async () => {
@@ -286,6 +343,30 @@ describe("Gemini JSONとパス検証", () => {
       { path: "packages/app/keep.local.ts", valid: true }
     ]);
   });
+
+  it("検証後に追加されたgitignoreとコード内シークレットを収集直前に再検査する", async () => {
+    const apiKey = ["AIza", "A".repeat(35)].join("");
+    await write("src/secret.ts", `export const apiKey = "${apiKey}";\n`);
+    await write("src/later-ignored.ts", "export const ignored = true;\n");
+    const files = [file("src/secret.ts"), file("src/later-ignored.ts")];
+    const validation = await validateRelatedFiles(root, files);
+    expect(validation.records.every((record) => record.valid)).toBe(true);
+    await fs.writeFile(path.join(root, ".gitignore"), "src/later-ignored.ts\n", "utf8");
+
+    const service = createService(
+      new MockRunner({
+        feature: "安全性",
+        overview: "",
+        flow: [],
+        files,
+        uncertainties: []
+      })
+    );
+    await expect(service.build(options({ name: "sensitive-content" }))).rejects.toMatchObject({
+      code: "NO_VALID_FILES",
+      details: expect.stringMatching(/Google APIキー|gitignore/)
+    });
+  });
 });
 
 function investigation(): Investigation {
@@ -293,6 +374,13 @@ function investigation(): Investigation {
     feature: "ログイン機能",
     overview: "認証機能の要約",
     flow: ["Login", "login()", "session"],
+    summaryDetails: {
+      responsibilities: ["Login: 入力を受け付ける", "AuthService: 認証を実行する"],
+      stateAndDataFlow: ["フォームからセッションへ流れる"],
+      apis: ["POST /api/login"],
+      externalDependencies: ["外部IdP"],
+      changeCautions: ["セッション互換性を維持する"]
+    },
     files: [
       {
         path: "src/Login.tsx",

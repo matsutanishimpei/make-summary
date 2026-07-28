@@ -2,9 +2,17 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { FeatureContextError } from "./errors.js";
 import { GitIgnoreResolver } from "./gitignore.js";
-import { isBinaryBuffer, matchesBuiltInExclusion } from "./validate.js";
+import { findSensitiveContent } from "./secrets.js";
+import {
+  isBinaryBuffer,
+  matchesBuiltInExclusion,
+  readVerifiedProjectFile
+} from "./validate.js";
 
 export const DEFAULT_API_CONTEXT_CHARS = 600_000;
+export const DEFAULT_API_MAX_SCAN_FILES = 25_000;
+export const DEFAULT_API_MAX_SCAN_BYTES = 256 * 1024 * 1024;
+export const DEFAULT_API_MAX_FILE_BYTES = 8 * 1024 * 1024;
 const SAMPLE_BYTES = 8_192;
 const MAX_FILE_EXCERPT_CHARS = 180_000;
 const sourceExtensions = new Set([
@@ -46,10 +54,15 @@ const sourceExtensions = new Set([
 
 interface SnapshotEntry {
   path: string;
-  absolutePath: string;
   size: number;
   sample: string;
   score: number;
+}
+
+export interface ProjectSnapshotLimits {
+  maxFiles?: number;
+  maxScanBytes?: number;
+  maxFileBytes?: number;
 }
 
 export interface ProjectSnapshot {
@@ -64,20 +77,47 @@ export async function buildProjectSnapshot(
   projectRoot: string,
   feature: string,
   maxChars = DEFAULT_API_CONTEXT_CHARS,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  limits: ProjectSnapshotLimits = {}
 ): Promise<ProjectSnapshot> {
   if (!Number.isInteger(maxChars) || maxChars < 20_000) {
     throw new FeatureContextError("INVALID_OPTIONS", "Gemini APIへ送るコード索引の上限が小さすぎます。");
   }
   const root = await fs.realpath(projectRoot);
   const ignoreResolver = new GitIgnoreResolver(root);
+  const maxFiles = limits.maxFiles ?? DEFAULT_API_MAX_SCAN_FILES;
+  const maxScanBytes = limits.maxScanBytes ?? DEFAULT_API_MAX_SCAN_BYTES;
+  const maxFileBytes = limits.maxFileBytes ?? DEFAULT_API_MAX_FILE_BYTES;
+  if (
+    !Number.isInteger(maxFiles) ||
+    maxFiles < 1 ||
+    !Number.isInteger(maxScanBytes) ||
+    maxScanBytes < SAMPLE_BYTES ||
+    !Number.isInteger(maxFileBytes) ||
+    maxFileBytes < SAMPLE_BYTES
+  ) {
+    throw new FeatureContextError("INVALID_OPTIONS", "Gemini APIのプロジェクト走査上限が不正です。");
+  }
 
   const entries: SnapshotEntry[] = [];
   const warnings: string[] = [];
   const terms = featureTerms(feature);
+  let scannedFiles = 0;
+  let scannedBytes = 0;
+  let scanStopped = false;
+  let scanLimitWarningAdded = false;
+
+  const stopForLimit = (message: string) => {
+    scanStopped = true;
+    if (!scanLimitWarningAdded) {
+      warnings.push(message);
+      scanLimitWarningAdded = true;
+    }
+  };
 
   async function visit(directory: string, relativeDirectory = ""): Promise<void> {
     throwIfAborted(signal);
+    if (scanStopped) return;
     let children: import("node:fs").Dirent[];
     try {
       children = await fs.readdir(directory, { withFileTypes: true });
@@ -90,6 +130,7 @@ export async function buildProjectSnapshot(
     children.sort((left, right) => left.name.localeCompare(right.name, "en"));
     for (const child of children) {
       throwIfAborted(signal);
+      if (scanStopped) break;
       const relative = relativeDirectory ? `${relativeDirectory}/${child.name}` : child.name;
       if (matchesBuiltInExclusion(relative)) continue;
       if (await ignoreResolver.isIgnored(relative, child.isDirectory())) continue;
@@ -104,24 +145,28 @@ export async function buildProjectSnapshot(
       }
       if (!child.isFile()) continue;
       try {
-        const stat = await fs.stat(absolute);
-        const handle = await fs.open(absolute, "r");
-        let sampleBuffer: Buffer;
-        try {
-          sampleBuffer = Buffer.alloc(Math.min(SAMPLE_BYTES, stat.size));
-          await handle.read(sampleBuffer, 0, sampleBuffer.length, 0);
-        } finally {
-          await handle.close();
+        if (scannedFiles >= maxFiles) {
+          stopForLimit(`API索引の走査ファイル数が上限${maxFiles}件に達したため、残りを省略`);
+          break;
         }
+        const stat = await fs.stat(absolute);
+        const plannedSampleBytes = Math.min(SAMPLE_BYTES, stat.size);
+        if (scannedBytes + plannedSampleBytes > maxScanBytes) {
+          stopForLimit(`API索引の読み取り量が上限${formatBytes(maxScanBytes)}に達したため、残りを省略`);
+          break;
+        }
+        scannedFiles += 1;
+        const sampleBuffer = await readVerifiedProjectFile(root, relative, SAMPLE_BYTES);
+        scannedBytes += sampleBuffer.length;
         if (isBinaryBuffer(sampleBuffer)) continue;
         const sample = sampleBuffer.toString("utf8");
-        if (containsPrivateKey(sample)) {
-          warnings.push(`${relative}: 秘密鍵らしい内容を検出したためAPI索引から除外`);
+        const sensitive = findSensitiveContent(sample);
+        if (sensitive) {
+          warnings.push(`${relative}: ${sensitive.kind}を検出したためAPI索引から除外`);
           continue;
         }
         entries.push({
           path: relative.replaceAll("\\", "/"),
-          absolutePath: absolute,
           size: stat.size,
           sample,
           score: scoreEntry(relative, sample, stat.size, terms)
@@ -160,15 +205,31 @@ export async function buildProjectSnapshot(
   let remaining = maxChars - intro.length - outro.length;
   const contentSections: string[] = [];
   let contentFileCount = 0;
+  let oversizedContentCount = 0;
+  let readBudgetOmittedCount = 0;
 
   for (const entry of entries.slice().sort(compareEntries)) {
     throwIfAborted(signal);
     if (remaining < 200) break;
     try {
-      const raw = await fs.readFile(entry.absolutePath);
+      if (entry.size > maxFileBytes) {
+        oversizedContentCount += 1;
+        continue;
+      }
+      if (scannedBytes + entry.size > maxScanBytes) {
+        readBudgetOmittedCount += 1;
+        continue;
+      }
+      if (await ignoreResolver.isIgnored(entry.path)) {
+        warnings.push(`${entry.path}: API送信直前の.gitignore検証で除外`);
+        continue;
+      }
+      const raw = await readVerifiedProjectFile(root, entry.path);
+      scannedBytes += raw.length;
       let content = new TextDecoder("utf-8", { fatal: true }).decode(raw).replace(/\r\n?/g, "\n");
-      if (containsPrivateKey(content)) {
-        warnings.push(`${entry.path}: 秘密鍵らしい内容を検出したためAPI送信から除外`);
+      const sensitive = findSensitiveContent(content);
+      if (sensitive) {
+        warnings.push(`${entry.path}: ${sensitive.kind}を検出したためAPI送信から除外`);
         continue;
       }
       const excerpted = content.length > MAX_FILE_EXCERPT_CHARS;
@@ -183,6 +244,16 @@ export async function buildProjectSnapshot(
         `${entry.path}: API送信用コードの読み取りに失敗 (${error instanceof Error ? error.message : String(error)})`
       );
     }
+  }
+  if (oversizedContentCount > 0) {
+    warnings.push(
+      `1ファイルの読み取り上限${formatBytes(maxFileBytes)}を超えた${oversizedContentCount}件はパス一覧のみ送信`
+    );
+  }
+  if (readBudgetOmittedCount > 0) {
+    warnings.push(
+      `API索引の総読み取り上限${formatBytes(maxScanBytes)}により${readBudgetOmittedCount}件はパス一覧のみ送信`
+    );
   }
 
   const omittedContentCount = entries.length - contentFileCount;
@@ -239,10 +310,11 @@ function fitLines(lines: string[], maxChars: number): { text: string; omitted: n
   return { text: included.join("\n"), omitted: lines.length - included.length };
 }
 
-function containsPrivateKey(content: string): boolean {
-  return /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(content);
-}
-
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new FeatureContextError("CANCELLED");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KiB`;
+  return `${Math.ceil(bytes / (1024 * 1024))} MiB`;
 }

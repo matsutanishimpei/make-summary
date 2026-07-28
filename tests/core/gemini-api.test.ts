@@ -63,6 +63,7 @@ describe("GeminiApiRunner", () => {
     });
 
     expect(result.files).toHaveLength(2);
+    expect(result.summaryDetails?.responsibilities).toEqual(["Login: 入力"]);
     expect(transport.requests).toHaveLength(1);
     const sent = transport.requests[0].prompt;
     expect(sent).toContain("src/Login.tsx");
@@ -92,6 +93,86 @@ describe("GeminiApiRunner", () => {
     ).resolves.toMatchObject({ feature: "ログイン機能" });
     expect(transport.requests).toHaveLength(2);
     expect(transport.requests[1].prompt).toContain("前回の応答はアプリ側の検証に失敗");
+  });
+
+  it("コード本文のシークレットをAPI送信前に除外する", async () => {
+    const apiKey = ["AIza", "B".repeat(35)].join("");
+    await write("src/late-secret.ts", `${"// safe prefix\n".repeat(700)}export const apiKey = "${apiKey}";\n`);
+    const transport = new MockTransport([validResponse()]);
+    const runner = new GeminiApiRunner({
+      apiKey: "test-key",
+      maxContextChars: 50_000,
+      transport
+    });
+
+    const result = await runner.investigate({
+      projectRoot: root,
+      prompt: "調査対象: ログイン機能",
+      timeoutMs: 10_000
+    });
+
+    expect(transport.requests[0].prompt).not.toContain(apiKey);
+    expect(result.uncertainties.join("\n")).toContain("Google APIキー");
+  });
+
+  it("ローカルのコード収集を含む調査全体へタイムアウトを適用する", async () => {
+    const runner = new GeminiApiRunner({
+      apiKey: "test-key",
+      transport: new MockTransport([]),
+      snapshotBuilder: async (_projectRoot, _feature, _maxChars, signal) =>
+        await new Promise<never>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new Error("snapshot aborted")), {
+            once: true
+          });
+        })
+    });
+
+    await expect(
+      runner.investigate({
+        projectRoot: root,
+        prompt: "調査対象: ログイン機能",
+        timeoutMs: 20
+      })
+    ).rejects.toMatchObject({ code: "TIMEOUT" });
+  });
+
+  it("API索引の走査ファイル数へ上限を適用して警告する", async () => {
+    const transport = new MockTransport([validResponse()]);
+    const runner = new GeminiApiRunner({
+      apiKey: "test-key",
+      maxContextChars: 50_000,
+      maxScanFiles: 1,
+      transport
+    });
+
+    const result = await runner.investigate({
+      projectRoot: root,
+      prompt: "調査対象: ログイン機能",
+      timeoutMs: 10_000
+    });
+
+    expect(result.uncertainties.join("\n")).toContain("走査ファイル数が上限1件");
+  });
+
+  it("API索引の総読み取り量へ上限を適用して警告する", async () => {
+    await write("aaa-large.ts", "a".repeat(9_000));
+    await write("aab-large.ts", "b".repeat(9_000));
+    const transport = new MockTransport([validResponse()]);
+    const runner = new GeminiApiRunner({
+      apiKey: "test-key",
+      maxContextChars: 50_000,
+      maxScanBytes: 8_192,
+      maxFileBytes: 8_192,
+      transport
+    });
+
+    const result = await runner.investigate({
+      projectRoot: root,
+      prompt: "調査対象: ログイン機能",
+      timeoutMs: 10_000
+    });
+
+    expect(result.uncertainties.join("\n")).toContain("読み取り量が上限8 KiB");
   });
 
   it("APIキーがない場合はコードを読む前に分かりやすく失敗する", async () => {
@@ -126,6 +207,7 @@ describe("FetchGeminiApiTransport", () => {
     const body = JSON.parse(String(init?.body));
     expect(body.generationConfig.responseFormat.text.mimeType).toBe("APPLICATION_JSON");
     expect(body.generationConfig.responseFormat.text.schema.properties.files.type).toBe("array");
+    expect(body.generationConfig.responseFormat.text.schema.properties.summaryDetails.type).toBe("object");
     expect(String(init?.body)).not.toContain("secret-key");
   });
 
@@ -201,6 +283,13 @@ function validResponse(): string {
     feature: "ログイン機能",
     overview: "概要",
     flow: ["Login", "authenticate"],
+    summaryDetails: {
+      responsibilities: ["Login: 入力"],
+      stateAndDataFlow: ["入力から認証結果へ"],
+      apis: ["POST /login"],
+      externalDependencies: [],
+      changeCautions: ["認証契約を維持"]
+    },
     files: [
       {
         path: "src/Login.tsx",

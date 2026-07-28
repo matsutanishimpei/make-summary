@@ -155,3 +155,44 @@ export function isBinaryBuffer(buffer: Buffer): boolean {
     return true;
   }
 }
+
+export async function readVerifiedProjectFile(
+  projectRoot: string,
+  relativePath: string,
+  maxBytes?: number
+): Promise<Buffer> {
+  const normalized = normalizeRelativePath(relativePath);
+  if (!normalized || matchesBuiltInExclusion(normalized)) {
+    throw new Error("安全なプロジェクト相対パスではありません");
+  }
+  const rootReal = await fs.realpath(projectRoot);
+  const absolute = path.resolve(rootReal, ...normalized.split("/"));
+  const before = await fs.lstat(absolute);
+  if (before.isSymbolicLink() || !before.isFile()) {
+    throw new Error("通常ファイルではないか、シンボリックリンクです");
+  }
+  const real = await fs.realpath(absolute);
+  if (!isInside(rootReal, real)) {
+    throw new Error("ファイルの参照先がプロジェクト外です");
+  }
+
+  const handle = await fs.open(real, "r");
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile()) throw new Error("通常ファイルではありません");
+    if (
+      before.dev !== 0 &&
+      before.ino !== 0 &&
+      (before.dev !== opened.dev || before.ino !== opened.ino)
+    ) {
+      throw new Error("検証後にファイルが差し替えられました");
+    }
+    if (maxBytes === undefined) return await handle.readFile();
+    const size = Math.min(Math.max(0, maxBytes), opened.size);
+    const buffer = Buffer.alloc(size);
+    const { bytesRead } = await handle.read(buffer, 0, size, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}

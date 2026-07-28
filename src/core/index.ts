@@ -9,6 +9,7 @@ export * from "./codex.js";
 export * from "./provider.js";
 export * from "./prompt.js";
 export * from "./validate.js";
+export * from "./secrets.js";
 export * from "./tree.js";
 export * from "./bundle.js";
 export * from "./service.js";

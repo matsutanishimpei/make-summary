@@ -1,5 +1,10 @@
 import { FeatureContextError } from "./errors.js";
-import type { Investigation, InvestigationFile, Priority } from "./types.js";
+import type {
+  Investigation,
+  InvestigationFile,
+  InvestigationSummaryDetails,
+  Priority
+} from "./types.js";
 
 export function parseInvestigation(raw: string): Investigation {
   try {
@@ -59,13 +64,31 @@ function validateInvestigation(value: unknown): Investigation {
       ...(typeof file.summary === "string" ? { summary: file.summary } : {})
     };
   });
+  const summaryDetails = parseSummaryDetails(input.summaryDetails);
   return {
     feature: input.feature,
     overview: typeof input.overview === "string" ? input.overview : undefined,
     flow: Array.isArray(input.flow) ? input.flow.filter((item): item is string => typeof item === "string") : [],
     files,
+    ...(summaryDetails ? { summaryDetails } : {}),
     uncertainties: Array.isArray(input.uncertainties)
       ? input.uncertainties.filter((item): item is string => typeof item === "string")
       : []
   };
+}
+
+function parseSummaryDetails(value: unknown): InvestigationSummaryDetails | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const input = value as Record<string, unknown>;
+  return {
+    responsibilities: stringArray(input.responsibilities),
+    stateAndDataFlow: stringArray(input.stateAndDataFlow),
+    apis: stringArray(input.apis),
+    externalDependencies: stringArray(input.externalDependencies),
+    changeCautions: stringArray(input.changeCautions)
+  };
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }

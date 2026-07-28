@@ -16,11 +16,20 @@ export interface InvestigationFile {
   summary?: string;
 }
 
+export interface InvestigationSummaryDetails {
+  responsibilities: string[];
+  stateAndDataFlow: string[];
+  apis: string[];
+  externalDependencies: string[];
+  changeCautions: string[];
+}
+
 export interface Investigation {
   feature: string;
   overview?: string;
   flow: string[];
   files: InvestigationFile[];
+  summaryDetails?: InvestigationSummaryDetails;
   uncertainties: string[];
 }
 

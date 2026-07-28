@@ -1,7 +1,11 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { buildCodeTree } from "./tree.js";
 import { FeatureContextError } from "./errors.js";
+import { GitIgnoreResolver } from "./gitignore.js";
+import { findSensitiveContent } from "./secrets.js";
+import { readVerifiedProjectFile } from "./validate.js";
 import type {
   BundleArtifact,
   BundledSource,
@@ -45,16 +49,25 @@ export async function collectSelectedFiles(
 ): Promise<{ files: CollectedFile[]; warnings: string[] }> {
   const files: CollectedFile[] = [];
   const warnings: string[] = [];
+  const ignoreResolver = new GitIgnoreResolver(await fs.realpath(projectRoot));
   for (const record of records) {
     if (!record.valid || !record.included || !record.normalizedPath) continue;
-    const absolute = path.join(projectRoot, ...record.normalizedPath.split("/"));
     try {
-      const raw = await fs.readFile(absolute);
-      const content = new TextDecoder("utf-8", { fatal: true }).decode(raw).replace(/\r\n?/g, "\n");
-      if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(content)) {
+      if (await ignoreResolver.isIgnored(record.normalizedPath)) {
+        record.valid = false;
         record.included = false;
-        record.exclusionReason = "秘密鍵らしい内容を検出";
-        warnings.push(`${record.normalizedPath}: 秘密鍵らしい内容を検出したため除外`);
+        record.exclusionReason = ".gitignoreの対象";
+        warnings.push(`${record.normalizedPath}: コード収集直前の.gitignore検証で除外`);
+        continue;
+      }
+      const raw = await readVerifiedProjectFile(projectRoot, record.normalizedPath);
+      const content = new TextDecoder("utf-8", { fatal: true }).decode(raw).replace(/\r\n?/g, "\n");
+      const sensitive = findSensitiveContent(content);
+      if (sensitive) {
+        record.valid = false;
+        record.included = false;
+        record.exclusionReason = `${sensitive.kind}を検出`;
+        warnings.push(`${record.normalizedPath}: ${sensitive.kind}を検出したため除外`);
         continue;
       }
       files.push({
@@ -63,6 +76,7 @@ export async function collectSelectedFiles(
         lineCount: content.length === 0 ? 0 : content.split("\n").length
       });
     } catch (error) {
+      record.valid = false;
       record.included = false;
       record.exclusionReason = "テキストとして読み取れない";
       warnings.push(
@@ -188,7 +202,7 @@ export async function packageBundle(input: PackageInput): Promise<Manifest> {
   };
 
   if (!input.dryRun) {
-    await writeBundle(input.outputDir, contents, manifest, input.force);
+    await writeBundle(input.projectRoot, input.outputDir, contents, manifest, input.force);
   }
   return manifest;
 }
@@ -201,12 +215,13 @@ function packCode(
 ): { artifacts: ArtifactContent[]; bundled: BundledSource[] } {
   if (maxArtifacts <= 0 || maxTotalCodeChars <= 0) return { artifacts: [], bundled: [] };
   const groupOrder = [...new Set(files.map((file) => sanitizeGroup(file.record.group)))];
+  const mixedGroup = uniqueMixedGroup(groupOrder);
   const assignedGroups =
     groupOrder.length <= maxArtifacts
       ? groupOrder
       : maxArtifacts === 1
         ? ["code"]
-        : [...groupOrder.slice(0, maxArtifacts - 1), "mixed"];
+        : [...groupOrder.slice(0, maxArtifacts - 1), mixedGroup];
   const buckets = new Map<string, CollectedFile[]>();
   assignedGroups.forEach((group) => buckets.set(group, []));
   for (const file of files) {
@@ -219,33 +234,54 @@ function packCode(
   let sequence = 2;
   const artifacts: ArtifactContent[] = [];
   const bundled: BundledSource[] = [];
-  for (const [group, bucket] of buckets) {
-    if (!bucket.length) continue;
-    let content = `# 関連コード: ${group}\n\n`;
-    const accepted: CollectedFile[] = [];
-    for (const file of bucket) {
-      const block = renderCodeBlock(file);
-      if (
-        content.length + block.length > maxFileChars ||
-        total + content.length + block.length > maxTotalCodeChars
-      ) {
-        continue;
+  const pending = new Map(
+    [...buckets].map(([group, bucket]) => [
+      group,
+      bucket.map((file) => ({ file, block: renderCodeBlock(file) }))
+    ])
+  );
+
+  while (artifacts.length < maxArtifacts && total < maxTotalCodeChars) {
+    let createdInRound = false;
+    for (const group of assignedGroups) {
+      if (artifacts.length >= maxArtifacts || total >= maxTotalCodeChars) break;
+      const queue = pending.get(group);
+      if (!queue?.length) continue;
+      const header = `# 関連コード: ${group}\n\n`;
+      const artifactLimit = Math.min(maxFileChars, maxTotalCodeChars - total);
+      if (header.length >= artifactLimit) break;
+
+      let content = header;
+      const accepted: CollectedFile[] = [];
+      const remaining: typeof queue = [];
+      for (const candidate of queue) {
+        if (header.length + candidate.block.length > maxFileChars) {
+          continue;
+        }
+        if (content.length + candidate.block.length <= artifactLimit) {
+          content += candidate.block;
+          accepted.push(candidate.file);
+        } else {
+          remaining.push(candidate);
+        }
       }
-      content += block;
-      accepted.push(file);
+      pending.set(group, remaining);
+      if (!accepted.length) continue;
+
+      const name = `${String(sequence++).padStart(2, "0")}-${uniqueArtifactName(group, artifacts)}.md`;
+      total += content.length;
+      artifacts.push({ name, content });
+      createdInRound = true;
+      for (const file of accepted) {
+        bundled.push({
+          path: file.record.normalizedPath!,
+          artifact: name,
+          lineStart: 1,
+          lineEnd: file.lineCount
+        });
+      }
     }
-    if (!accepted.length) continue;
-    const name = `${String(sequence++).padStart(2, "0")}-${uniqueArtifactName(group, artifacts)}.md`;
-    total += content.length;
-    artifacts.push({ name, content });
-    for (const file of accepted) {
-      bundled.push({
-        path: file.record.normalizedPath!,
-        artifact: name,
-        lineStart: 1,
-        lineEnd: file.lineCount
-      });
-    }
+    if (!createdInRound) break;
   }
   return { artifacts, bundled };
 }
@@ -326,6 +362,7 @@ function renderOverview(
       : ["- なし"])
   ];
   if (input.summary) {
+    const details = input.investigation.summaryDetails;
     lines.push(
       "",
       "## 機能要約",
@@ -339,13 +376,33 @@ function renderOverview(
           `- \`${record.normalizedPath}\`: ${record.summary || record.role}（${record.reason}）`
       ),
       "",
-      "### 状態・データ・API・外部依存・修正時の注意",
+      "### 主要コンポーネントの責務",
       "",
-      "上記の処理フロー、各ファイルの役割・選定理由、不明点を併せて参照してください。明示されていない依存関係は推測せず、実装を変更する前にコード上で再確認してください。"
+      ...summaryLines(details?.responsibilities, "AIから主要コンポーネントの責務は返されませんでした。"),
+      "",
+      "### 状態とデータの流れ",
+      "",
+      ...summaryLines(details?.stateAndDataFlow, "AIから状態とデータの流れは返されませんでした。"),
+      "",
+      "### API",
+      "",
+      ...summaryLines(details?.apis, "AIからAPI情報は返されませんでした。"),
+      "",
+      "### 外部依存",
+      "",
+      ...summaryLines(details?.externalDependencies, "AIから外部依存は返されませんでした。"),
+      "",
+      "### 修正時の注意点",
+      "",
+      ...summaryLines(details?.changeCautions, "AIから修正時の注意点は返されませんでした。")
     );
   }
   lines.push("");
   return lines.join("\n");
+}
+
+function summaryLines(items: string[] | undefined, emptyMessage: string): string[] {
+  return items?.length ? items.map((item) => `- ${item}`) : [`- ${emptyMessage}`];
 }
 
 function initialOmissions(
@@ -368,31 +425,152 @@ function initialOmissions(
 }
 
 async function writeBundle(
+  projectRoot: string,
   outputDir: string,
   contents: ArtifactContent[],
   manifest: Manifest,
   force: boolean
 ): Promise<void> {
-  const bundleDir = path.join(outputDir, "bundle");
-  try {
-    await fs.access(path.join(outputDir, "manifest.json"));
-    if (!force) throw new FeatureContextError("OUTPUT_EXISTS");
-  } catch (error) {
-    if (error instanceof FeatureContextError) throw error;
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  const resolvedOutput = path.resolve(outputDir);
+  await assertSafeOutputLocation(projectRoot, resolvedOutput);
+  const parentDir = path.dirname(resolvedOutput);
+  await fs.mkdir(parentDir, { recursive: true });
+  const existing = await existingDirectoryState(resolvedOutput);
+  if (existing === "invalid") {
+    throw new FeatureContextError("INVALID_OUTPUT", "出力先が通常のディレクトリではありません。");
   }
-  await fs.mkdir(bundleDir, { recursive: true });
-  if (force) {
+  if (existing === "nonempty" && !force) throw new FeatureContextError("OUTPUT_EXISTS");
+
+  const unique = `${process.pid}-${randomUUID()}`;
+  const baseName = path.basename(resolvedOutput);
+  const stageDir = path.join(parentDir, `.${baseName}.stage-${unique}`);
+  const backupDir = path.join(parentDir, `.${baseName}.backup-${unique}`);
+  let previousMoved = false;
+  let replacementInstalled = false;
+  try {
+    if (existing !== "missing" && force) {
+      await fs.cp(resolvedOutput, stageDir, {
+        recursive: true,
+        dereference: false,
+        errorOnExist: true
+      });
+    } else {
+      await fs.mkdir(stageDir);
+    }
+
+    const stagedBundle = path.join(stageDir, "bundle");
+    await prepareStagedBundle(stagedBundle);
+    for (const item of contents) {
+      await fs.writeFile(path.join(stagedBundle, item.name), item.content, {
+        encoding: "utf8",
+        flag: "wx"
+      });
+    }
+    await fs.writeFile(path.join(stageDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    if (existing !== "missing") {
+      await fs.rename(resolvedOutput, backupDir);
+      previousMoved = true;
+    }
+    try {
+      await fs.rename(stageDir, resolvedOutput);
+      replacementInstalled = true;
+    } catch (error) {
+      if (previousMoved) {
+        await fs.rename(backupDir, resolvedOutput);
+        previousMoved = false;
+      }
+      throw error;
+    }
+    if (previousMoved) {
+      await fs.rm(backupDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+      previousMoved = false;
+    }
+  } catch (error) {
+    await fs.rm(stageDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }).catch(() => {});
+    if (previousMoved && !replacementInstalled && !(await pathExists(resolvedOutput))) {
+      try {
+        await fs.rename(backupDir, resolvedOutput);
+        previousMoved = false;
+      } catch {
+        // The original error below retains the write failure diagnostics.
+      }
+    }
+    if (error instanceof FeatureContextError) throw error;
+    throw new FeatureContextError(
+      "INVALID_OUTPUT",
+      "成果物を安全に書き込めませんでした。既存成果物は可能な限り保持されています。",
+      error instanceof Error ? error.stack ?? error.message : String(error)
+    );
+  }
+}
+
+async function prepareStagedBundle(bundleDir: string): Promise<void> {
+  try {
+    const stat = await fs.lstat(bundleDir);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      await fs.rm(bundleDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+      await fs.mkdir(bundleDir, { recursive: true });
+      return;
+    }
     for (const entry of await fs.readdir(bundleDir, { withFileTypes: true })) {
-      if (entry.isFile() && entry.name.endsWith(".md")) {
+      if (entry.name.endsWith(".md") && (entry.isFile() || entry.isSymbolicLink())) {
         await fs.unlink(path.join(bundleDir, entry.name));
       }
     }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    await fs.mkdir(bundleDir, { recursive: true });
   }
-  for (const item of contents) {
-    await fs.writeFile(path.join(bundleDir, item.name), item.content, "utf8");
+}
+
+async function assertSafeOutputLocation(projectRoot: string, outputDir: string): Promise<void> {
+  const rootReal = await fs.realpath(projectRoot);
+  if (!isSameOrInside(rootReal, outputDir) || path.resolve(rootReal) === path.resolve(outputDir)) {
+    throw new FeatureContextError("INVALID_OUTPUT");
   }
-  await fs.writeFile(path.join(outputDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  let cursor = outputDir;
+  while (true) {
+    try {
+      const real = await fs.realpath(cursor);
+      if (!isSameOrInside(rootReal, real)) throw new FeatureContextError("INVALID_OUTPUT");
+      return;
+    } catch (error) {
+      if (error instanceof FeatureContextError) throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const parent = path.dirname(cursor);
+      if (parent === cursor) throw new FeatureContextError("INVALID_OUTPUT");
+      cursor = parent;
+    }
+  }
+}
+
+async function existingDirectoryState(
+  directory: string
+): Promise<"missing" | "empty" | "nonempty" | "invalid"> {
+  try {
+    const stat = await fs.lstat(directory);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) return "invalid";
+    return (await fs.readdir(directory)).length === 0 ? "empty" : "nonempty";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+    throw error;
+  }
+}
+
+async function pathExists(candidate: string): Promise<boolean> {
+  try {
+    await fs.lstat(candidate);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+function isSameOrInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
 function providerName(provider: Manifest["provider"]["id"]): string {
@@ -404,6 +582,13 @@ function providerName(provider: Manifest["provider"]["id"]): string {
 function sanitizeGroup(group: string): string {
   const normalized = group.normalize("NFKC").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
   return normalized || "code";
+}
+
+function uniqueMixedGroup(groups: string[]): string {
+  let candidate = "mixed";
+  let suffix = 2;
+  while (groups.includes(candidate)) candidate = `mixed-${suffix++}`;
+  return candidate;
 }
 
 function uniqueArtifactName(group: string, artifacts: ArtifactContent[]): string {

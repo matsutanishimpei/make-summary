@@ -58,6 +58,13 @@ export class FeatureContextService {
       report({ stage: "collecting", message: "コードを収集中" });
       const collection = await collectSelectedFiles(projectRoot, validation.records);
       throwIfAborted(signal);
+      if (!validation.records.some((record) => record.valid)) {
+        throw new FeatureContextError(
+          "NO_VALID_FILES",
+          undefined,
+          [...validation.warnings, ...collection.warnings].join("\n")
+        );
+      }
 
       report({ stage: "packing", message: "添付用ファイルへ整理中" });
       const gitCommitId = await getGitCommitId(projectRoot);
@@ -109,6 +116,13 @@ export class FeatureContextService {
       report({ stage: "collecting", message: "選択したコードを収集中" });
       const collection = await collectSelectedFiles(projectRoot, validation.records);
       throwIfAborted(signal);
+      if (!validation.records.some((record) => record.valid)) {
+        throw new FeatureContextError(
+          "NO_VALID_FILES",
+          undefined,
+          [...validation.warnings, ...collection.warnings].join("\n")
+        );
+      }
       report({ stage: "packing", message: "AIを再実行せずbundleを再構築中" });
       const rebuilt = await packageBundle({
         projectRoot,
