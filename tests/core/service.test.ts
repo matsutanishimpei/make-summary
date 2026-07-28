@@ -264,6 +264,28 @@ describe("Gemini JSONとパス検証", () => {
       normalizedPath: "画面 部品/ログイン.ts"
     });
   });
+
+  it("サブディレクトリの.gitignore対象を関連ファイルから除外する", async () => {
+    await write("packages/app/.gitignore", "generated/\n*.local.ts\n!keep.local.ts\n");
+    await write("packages/app/generated/schema.ts", "export const generated = true;\n");
+    await write("packages/app/private.local.ts", "export const privateValue = true;\n");
+    await write("packages/app/keep.local.ts", "export const keep = true;\n");
+
+    const result = await validateRelatedFiles(root, [
+      file("packages/app/generated/schema.ts"),
+      file("packages\\app\\private.local.ts"),
+      file("packages/app/keep.local.ts")
+    ]);
+
+    expect(result.records.map((record) => ({
+      path: record.normalizedPath,
+      valid: record.valid
+    }))).toEqual([
+      { path: "packages/app/generated/schema.ts", valid: false },
+      { path: "packages/app/private.local.ts", valid: false },
+      { path: "packages/app/keep.local.ts", valid: true }
+    ]);
+  });
 });
 
 function investigation(): Investigation {

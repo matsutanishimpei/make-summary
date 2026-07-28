@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import createIgnore from "ignore";
 import { FeatureContextError } from "./errors.js";
+import { GitIgnoreResolver } from "./gitignore.js";
 import { isBinaryBuffer, matchesBuiltInExclusion } from "./validate.js";
 
 export const DEFAULT_API_CONTEXT_CHARS = 600_000;
@@ -70,14 +70,7 @@ export async function buildProjectSnapshot(
     throw new FeatureContextError("INVALID_OPTIONS", "Gemini APIへ送るコード索引の上限が小さすぎます。");
   }
   const root = await fs.realpath(projectRoot);
-  const matcher = createIgnore();
-  try {
-    matcher.add(await fs.readFile(path.join(root, ".gitignore"), "utf8"));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw new FeatureContextError("READ_DENIED", undefined, String(error));
-    }
-  }
+  const ignoreResolver = new GitIgnoreResolver(root);
 
   const entries: SnapshotEntry[] = [];
   const warnings: string[] = [];
@@ -99,8 +92,7 @@ export async function buildProjectSnapshot(
       throwIfAborted(signal);
       const relative = relativeDirectory ? `${relativeDirectory}/${child.name}` : child.name;
       if (matchesBuiltInExclusion(relative)) continue;
-      const ignoredPath = child.isDirectory() ? `${relative}/` : relative;
-      if (matcher.ignores(ignoredPath)) continue;
+      if (await ignoreResolver.isIgnored(relative, child.isDirectory())) continue;
       if (child.isSymbolicLink()) {
         warnings.push(`${relative}: シンボリックリンクのためAPI索引から除外`);
         continue;

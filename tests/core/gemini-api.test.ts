@@ -28,6 +28,16 @@ beforeEach(async () => {
   await write("src/auth.ts", "export const authenticate = () => true;\n");
   await write(".env.local", "TOP_SECRET=never-send\n");
   await write("ignored.ts", "const ignoredSecret = 'never-send-ignored';\n");
+  await write("packages/web/.gitignore", "generated/\n*.private.ts\n!safe.private.ts\n");
+  await write(
+    "packages/web/generated/client.ts",
+    "const nestedIgnoredSecret = 'never-send-nested-generated';\n"
+  );
+  await write(
+    "packages/web/account.private.ts",
+    "const nestedPrivateSecret = 'never-send-nested-private';\n"
+  );
+  await write("packages/web/safe.private.ts", "export const nestedSafeFile = true;\n");
   await fs.writeFile(path.join(root, ".gitignore"), "ignored.ts\n", "utf8");
   await fs.writeFile(path.join(root, "image.bin"), Buffer.from([0, 1, 2, 3]));
 });
@@ -59,6 +69,9 @@ describe("GeminiApiRunner", () => {
     expect(sent).toContain("export function Login()");
     expect(sent).not.toContain("TOP_SECRET");
     expect(sent).not.toContain("never-send-ignored");
+    expect(sent).not.toContain("never-send-nested-generated");
+    expect(sent).not.toContain("never-send-nested-private");
+    expect(sent).toContain("nestedSafeFile");
     expect(sent).not.toContain("image.bin");
   });
 

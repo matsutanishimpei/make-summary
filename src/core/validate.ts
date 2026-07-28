@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import createIgnore from "ignore";
 import { FeatureContextError } from "./errors.js";
+import { GitIgnoreResolver } from "./gitignore.js";
 import type { InvestigationFile, ValidationRecord } from "./types.js";
 
 export const blockedDirectories = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
@@ -31,14 +31,7 @@ export async function validateRelatedFiles(
     );
   }
 
-  const matcher = createIgnore();
-  try {
-    matcher.add(await fs.readFile(path.join(rootReal, ".gitignore"), "utf8"));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw new FeatureContextError("READ_DENIED", undefined, String(error));
-    }
-  }
+  const ignoreResolver = new GitIgnoreResolver(rootReal);
 
   const seen = new Set<string>();
   const records: ValidationRecord[] = [];
@@ -78,7 +71,7 @@ export async function validateRelatedFiles(
       exclude("秘密情報または生成物の除外ルールに一致");
       continue;
     }
-    if (matcher.ignores(normalized)) {
+    if (await ignoreResolver.isIgnored(normalized)) {
       exclude(".gitignoreの対象");
       continue;
     }
