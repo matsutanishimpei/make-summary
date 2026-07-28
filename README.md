@@ -4,6 +4,12 @@ Feature Context Builder は、プロジェクトフォルダと「ログイン�
 
 調査するソースファイル数に上限5件を設けるものではありません。必要なソースを件数固定せず検証し、最終成果物だけを最大5件へ梱包します。
 
+## 関連ドキュメント
+
+- [技術設計書](docs/architecture.md) — アーキテクチャの選定理由、モジュール間の関係、主要IF
+- [プロダクト企画書](docs/product-overview.md) — 製品が必要な背景、課題、課題に対する機能、プロダクト原則
+- [Android版 Tailscale・スマホ連携マニュアル](docs/android-tailscale-guide.md) — Androidでの初回接続と利用方法
+
 ## 必要環境
 
 - Windows 10/11（macOS/Linuxでも開発構成は動作しますが、主対象はWindowsです）
