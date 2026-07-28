@@ -1,10 +1,10 @@
 /**
  * @feature-context
- * @feature feature discovery, public API, symbol index, comment index, import graph
- * @role ローカル機能探索coreの索引・import解析・graph展開IFを一か所から再exportする
+ * @feature feature discovery, public API, symbol index, import graph, explainable ranking
+ * @role ローカル機能探索coreの索引・graph・query・順位付けIFを一か所から再exportする
  * @entry discovery module consumers
  * @flow consumer -> discovery public API -> internal modules
- * @related structured-comments.ts, file-index.ts, imports.ts, import-graph.ts, types.ts
+ * @related file-index.ts, import-graph.ts, query.ts, ranker.ts, discover.ts, types.ts
  * @caution 内部補助関数を公開して互換性対象へしない
  */
 
@@ -15,3 +15,6 @@ export * from "./comments.js";
 export * from "./file-index.js";
 export * from "./imports.js";
 export * from "./import-graph.js";
+export * from "./query.js";
+export * from "./ranker.js";
+export * from "./discover.js";

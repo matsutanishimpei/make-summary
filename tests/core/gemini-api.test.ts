@@ -115,6 +115,44 @@ describe("GeminiApiRunner", () => {
     expect(result.uncertainties.join("\n")).toContain("Google APIキー");
   });
 
+  it("local ranking上位の本文を文字数上限内へ優先収録する", async () => {
+    for (let index = 0; index < 12; index += 1) {
+      await write(
+        `src/aaa-unrelated-${String(index).padStart(2, "0")}.ts`,
+        `// 日付表示utility\nexport const unrelated${index} = "${"x".repeat(1_400)}";\n`
+      );
+    }
+    await write(
+      "zzz/LoginFeature.ts",
+      `/**
+ * @feature-context
+ * @feature ログイン, authentication
+ * @role 認証画面からloginを開始する
+ */
+export const highPriorityLoginMarker = "must-be-sent";
+`
+    );
+    const transport = new MockTransport([validResponse()]);
+    const runner = new GeminiApiRunner({
+      apiKey: "test-key",
+      maxContextChars: 20_000,
+      transport
+    });
+
+    await runner.investigate({
+      projectRoot: root,
+      prompt: "調査対象: ログイン機能",
+      timeoutMs: 10_000
+    });
+
+    const sent = transport.requests[0].prompt;
+    expect(sent).toContain("highPriorityLoginMarker");
+    expect(sent).toContain("local_score=");
+    expect(sent.indexOf("zzz/LoginFeature.ts")).toBeLessThan(
+      sent.lastIndexOf("highPriorityLoginMarker")
+    );
+  });
+
   it("ローカルのコード収集を含む調査全体へタイムアウトを適用する", async () => {
     const runner = new GeminiApiRunner({
       apiKey: "test-key",

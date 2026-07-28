@@ -4,7 +4,7 @@
 
 ローカル機能探索は、コード全文を最初から外部AIへ渡さず、PC内で「どのファイルが指定機能に関係しそうか」を絞るためのcoreです。
 
-現在の段階では、安全なファイル走査、構造化コメント、通常コメント、シンボルの索引に加え、project内importグラフを提供します。今後、根拠付き順位付け、CLI、多言語Embeddingを同じcoreへ追加します。
+現在の段階では、安全なファイル走査、構造化コメント、通常コメント、シンボルの索引、project内importグラフ、根拠付き順位付けを提供します。今後、CLIと多言語Embeddingを同じcoreへ追加します。
 
 ```mermaid
 flowchart LR
@@ -20,6 +20,9 @@ flowchart LR
     Imports --> Index
     Index --> Graph["project内ImportGraph"]
     Graph --> Dependencies["依存先と利用元を<br/>depth指定で展開"]
+    Index --> Rank["根拠ごとのscore"]
+    Dependencies --> Rank
+    Rank --> Candidates["説明可能な候補順"]
 ```
 
 ## 索引に入る情報
@@ -85,3 +88,54 @@ const related = expandImportGraph(graph, ["src/pages/LoginPage.tsx"], {
 - Python relative module、Goの自module、Rustの`mod`/`crate`、Java package、C# namespaceも軽量解決する
 
 tsconfig path alias、webpack alias、動的に組み立てたimport、実行時DI、reflectionは現時点では完全解決しません。誤ったedgeを推測するより、未解決として残す方針です。
+
+## 説明可能な順位付け
+
+`rankDiscoveryIndex(index, graph, feature)`は合計点だけでなく、加点・減点を`evidence`配列で返します。
+
+| 根拠 | 基本点 | 意味 |
+|---|---:|---|
+| 構造化commentの`@feature` | 300 | fileが宣言した機能 |
+| path | 220 | file・directory名 |
+| symbol | 190 | class、function、type名 |
+| `@role` | 170 | fileの責務 |
+| `@entry`、`@related`、`@flow` | 150 | 入口と処理関係 |
+| 通常comment・docstring | 110 | 人が記述した意味 |
+| import specifier | 90 | import文に現れる関連名 |
+| source sample | 60 | 先頭sample内の文字列 |
+| 一般的なsource directory | 50 | `src`、`app`、`api`など |
+| source file | 30 | source拡張子 |
+| 80KB以下 | 10 | 全体を扱いやすい |
+| test file | -5 | 直接候補では軽く減点 |
+| import先 | depth 1で約140 | 入口候補が依存するfile |
+| 利用元 | depth 1で約110 | 入口候補を利用するfile |
+
+元の機能語は重み1.0、同義語・関連語は0.6です。複数根拠が一致すれば合算します。全候補について、合計点は`evidence.score`の合計と必ず一致します。
+
+```json
+{
+  "path": "src/services/AuthService.ts",
+  "score": 382,
+  "relation": "direct",
+  "evidence": [
+    {
+      "kind": "symbol",
+      "score": 114,
+      "detail": "symbolが「auth」と一致"
+    },
+    {
+      "kind": "graph-dependency",
+      "score": 158,
+      "detail": "LoginPageから1段のimport先"
+    }
+  ]
+}
+```
+
+### 現在の関連語展開
+
+認証、通知、課金、account、権限、検索、file transfer、message、設定、注文の日本語・英語辞書を内蔵しています。辞書にない語も元のqueryとして検索します。関連語辞書は決定的で説明しやすい一方、未知の表現には弱いため、後続段階で多言語Embeddingを追加します。
+
+### Gemini APIとの接続
+
+Gemini API用project snapshotはこの順位を使って本文を詰めます。パス一覧と各本文headerには`local_score`と上位の根拠を付けます。Geminiはローカルで選ばれた順序と理由を確認したうえで最終調査を行います。

@@ -1,10 +1,10 @@
 /**
  * @feature-context
- * @feature feature discovery, 構造化コメント, symbol index, import graph
- * @role ローカル機能探索で共有する索引・import関係・graph展開の契約を定義する
- * @entry StructuredFileComment, DiscoveryIndex, ImportGraph
- * @flow source files -> discovery index -> import graph -> ranker
- * @related structured-comments.ts, file-index.ts, imports.ts, import-graph.ts
+ * @feature feature discovery, 構造化コメント, symbol index, import graph, explainable ranking
+ * @role ローカル機能探索で共有する索引・graph・query・順位付け結果の契約を定義する
+ * @entry StructuredFileComment, DiscoveryIndex, ImportGraph, DiscoveryRanking
+ * @flow source files -> discovery index -> import graph -> explainable ranker
+ * @related structured-comments.ts, file-index.ts, import-graph.ts, query.ts, ranker.ts
  * @caution 永続化する場合はschema versionを追加して互換性を管理する
  */
 
@@ -132,4 +132,80 @@ export interface ImportGraphRelation {
 export interface ImportGraphExpansionOptions {
   maxDepth?: number;
   directions?: ImportGraphDirection[];
+}
+
+export type QueryTermOrigin = "original" | "related";
+
+export interface DiscoveryQueryTerm {
+  value: string;
+  origin: QueryTermOrigin;
+  weight: number;
+  concept?: string;
+}
+
+export interface DiscoveryQuery {
+  raw: string;
+  terms: DiscoveryQueryTerm[];
+  concepts: string[];
+}
+
+export type RankingEvidenceKind =
+  | "structured-feature"
+  | "role"
+  | "entry"
+  | "path"
+  | "symbol"
+  | "comment"
+  | "import"
+  | "content"
+  | "source-layout"
+  | "small-file"
+  | "test-file"
+  | "graph-dependency"
+  | "graph-dependent";
+
+export interface RankingEvidence {
+  kind: RankingEvidenceKind;
+  score: number;
+  detail: string;
+  terms?: string[];
+  via?: string;
+  depth?: number;
+}
+
+export type DiscoveryRelation = "direct" | "dependency" | "dependent" | "fallback";
+
+export interface RankedDiscoveryFile {
+  path: string;
+  score: number;
+  relation: DiscoveryRelation;
+  direct: boolean;
+  matchedTerms: string[];
+  evidence: RankingEvidence[];
+}
+
+export interface DiscoveryRanking {
+  query: DiscoveryQuery;
+  files: RankedDiscoveryFile[];
+  directMatchCount: number;
+  graphMatchCount: number;
+  warnings: string[];
+}
+
+export interface DiscoveryRankingOptions {
+  maxResults?: number;
+  minScore?: number;
+  graphDepth?: number;
+  maxGraphSeeds?: number;
+}
+
+export interface DiscoverFeatureOptions {
+  indexLimits?: DiscoveryIndexLimits;
+  ranking?: DiscoveryRankingOptions;
+}
+
+export interface FeatureDiscoveryResult {
+  index: DiscoveryIndex;
+  graph: ImportGraph;
+  ranking: DiscoveryRanking;
 }
