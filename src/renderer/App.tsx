@@ -163,6 +163,7 @@ export function App() {
   }
 
   const currentStep = progressSteps.findIndex((item) => item.stage === progress?.stage);
+  const errorDetails = error ? error.details || `message=${error.message}` : "";
 
   return (
     <div className="app-shell">
@@ -322,7 +323,7 @@ export function App() {
             <div className="error-box" role="alert">
               <strong>{error.message}</strong>
               <p>入力や選択したAI CLIの状態を確認して、もう一度実行できます。</p>
-              {error.details && <details><summary>技術的な詳細</summary><pre>{error.details}</pre></details>}
+              <details><summary>技術的な詳細</summary><pre>{errorDetails}</pre></details>
             </div>
           )}
           {notice && <div className="notice" role="status">{notice}</div>}

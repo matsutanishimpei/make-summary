@@ -58,9 +58,10 @@ export class GeminiCliRunner implements InvestigationRunner {
       /--approval-mode/.test(info.help) && /\bplan\b/.test(info.help)
         ? ["--approval-mode", "plan"]
         : [];
+    const trustArgs = /--skip-trust/.test(info.help) ? ["--skip-trust"] : [];
     const result = await this.execute({
       executable: this.executable,
-      args: [...safetyArgs, promptFlag, request.prompt, "--output-format", "json"],
+      args: [...trustArgs, ...safetyArgs, promptFlag, request.prompt, "--output-format", "json"],
       cwd: request.projectRoot,
       timeoutMs: request.timeoutMs,
       signal: request.signal,

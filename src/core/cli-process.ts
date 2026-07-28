@@ -159,7 +159,7 @@ export function runCliProcess(request: CliProcessRequest): Promise<CliProcessRes
         return;
       }
       if (exitCode !== 0) {
-        const details = `exit=${exitCode}\n${stderr}\n${stdout}`;
+        const details = formatCliFailureDetails(request, launch, exitCode, stdout, stderr);
         if (
           /auth|unauthori[sz]ed|login|credential|api.?key|not logged in|認証|ログイン/i.test(details)
         ) {
@@ -184,6 +184,29 @@ export function runCliProcess(request: CliProcessRequest): Promise<CliProcessRes
       resolve({ stdout, stderr, exitCode });
     });
   });
+}
+
+function formatCliFailureDetails(
+  request: CliProcessRequest,
+  launch: CliLaunch,
+  exitCode: number | null,
+  stdout: string,
+  stderr: string
+): string {
+  const args = request.args.map((arg, index) =>
+    index > 0 && ["--prompt", "-p"].includes(request.args[index - 1]) ? "<prompt omitted>" : arg
+  );
+  return [
+    `provider=${request.providerName}`,
+    `exit=${exitCode}`,
+    `cwd=${request.cwd}`,
+    `executable=${launch.executable}`,
+    `args=${[...launch.argsPrefix, ...args].join(" ")}`,
+    "stderr:",
+    stderr.trim() || "<empty>",
+    "stdout:",
+    stdout.trim() || "<empty>"
+  ].join("\n");
 }
 
 export interface CliLaunch {

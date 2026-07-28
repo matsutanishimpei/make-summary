@@ -5,6 +5,21 @@ import { describe, expect, it } from "vitest";
 import { resolveWindowsNpmShim, runCliProcess } from "../../src/core/index.js";
 
 describe("runCliProcess", () => {
+  it("includes diagnostics when the process exits with an error", async () => {
+    await expect(
+      runCliProcess({
+        executable: process.execPath,
+        args: ["-e", "process.exit(7)"],
+        cwd: process.cwd(),
+        timeoutMs: 5_000,
+        providerName: "Mock"
+      })
+    ).rejects.toMatchObject({
+      code: "CLI_FAILED",
+      details: expect.stringContaining("exit=7")
+    });
+  });
+
   it("タイムアウト時に子プロセスを終了する", async () => {
     await expect(
       runCliProcess({
