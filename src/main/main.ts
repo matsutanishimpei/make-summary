@@ -15,16 +15,20 @@ import { fileURLToPath } from "node:url";
 import {
   FeatureContextError,
   FeatureContextService,
-  type BuildOptions,
   type BuildResult,
-  type RebuildOptions
+  type ProgressEvent,
+  parseDesktopBuildRequest,
+  parseDesktopRebuildRequest,
+  type DesktopBuildRequest,
+  type DesktopRebuildRequest
 } from "../core/index.js";
+import { JobCoordinator } from "../application/jobs/job-coordinator.js";
 import { RemoteController } from "./remote-controller.js";
 import { resolveDesktopBuildOptions } from "./resolve-options.js";
 import { ElectronCredentialStore } from "./secure-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const jobs = new Map<string, AbortController>();
+const desktopJobs = new JobCoordinator<undefined, BuildResult, ProgressEvent>();
 const allowedFiles = new Set<string>();
 const allowedOutputs = new Set<string>();
 let mainWindow: BrowserWindow | undefined;
@@ -131,31 +135,30 @@ function registerIpc(): void {
     return result.canceled ? [] : result.filePaths;
   });
 
-  ipcMain.handle("job:start", async (event, jobId: string, options: BuildOptions) =>
+  ipcMain.handle("job:start", async (event, jobId: string, options: DesktopBuildRequest) =>
     safeInvoke(async () => {
-      const resolvedOptions = await resolveDesktopBuildOptions(options, requireCredentialStore());
-      return runJob(event.sender, jobId, (service, controller) =>
+      const request = parseDesktopBuildRequest(options);
+      const resolvedOptions = await resolveDesktopBuildOptions(request, requireCredentialStore());
+      return runJob(event.sender, jobId, (service, signal, report) =>
         service.build(
           resolvedOptions,
-          (progress) => event.sender.send("job:progress", jobId, progress),
-          controller.signal
+          report,
+          signal
         )
       );
     })
   );
 
-  ipcMain.handle("job:rebuild", async (event, jobId: string, options: RebuildOptions) =>
+  ipcMain.handle("job:rebuild", async (event, jobId: string, options: DesktopRebuildRequest) =>
     safeInvoke(() =>
-      runJob(event.sender, jobId, (service, controller) =>
-        service.rebuild(options, (progress) => event.sender.send("job:progress", jobId, progress), controller.signal)
+      runJob(event.sender, jobId, (service, signal, report) =>
+        service.rebuild(parseDesktopRebuildRequest(options), report, signal)
       )
     )
   );
 
   ipcMain.handle("job:cancel", (_event, jobId: string) => {
-    const controller = jobs.get(jobId);
-    controller?.abort();
-    return Boolean(controller);
+    return desktopJobs.cancel(jobId);
   });
 
   ipcMain.handle("artifact:read", async (_event, filePath: string) => {
@@ -254,17 +257,27 @@ function registerIpc(): void {
 async function runJob(
   sender: Electron.WebContents,
   jobId: string,
-  operation: (service: FeatureContextService, controller: AbortController) => Promise<BuildResult>
+  operation: (
+    service: FeatureContextService,
+    signal: AbortSignal,
+    report: (progress: ProgressEvent) => void
+  ) => Promise<BuildResult>
 ): Promise<BuildResult> {
-  if (jobs.has(jobId)) throw new FeatureContextError("CLI_FAILED", "同じ処理がすでに実行中です。");
-  const controller = new AbortController();
-  jobs.set(jobId, controller);
+  if (desktopJobs.get(jobId)) {
+    throw new FeatureContextError("CLI_FAILED", "同じ処理がすでに実行中です。");
+  }
+  const handle = desktopJobs.start(jobId, undefined, ({ signal, report }) =>
+    operation(new FeatureContextService(), signal, (progress) => {
+      report(progress);
+      if (!sender.isDestroyed()) sender.send("job:progress", jobId, progress);
+    })
+  );
   try {
-    const result = await operation(new FeatureContextService(), controller);
+    const result = await handle.completion;
     registerResult(result);
     return result;
   } finally {
-    jobs.delete(jobId);
+    desktopJobs.remove(jobId);
     if (!sender.isDestroyed()) sender.send("job:ended", jobId);
   }
 }

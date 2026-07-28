@@ -13,3 +13,7 @@ export * from "./secrets.js";
 export * from "./tree.js";
 export * from "./bundle.js";
 export * from "./service.js";
+export * from "../contracts/defaults.js";
+export * from "../contracts/desktop.js";
+export * from "../contracts/manifest.js";
+export * from "../contracts/providers.js";

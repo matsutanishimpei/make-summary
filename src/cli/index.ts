@@ -2,6 +2,7 @@
 import { Command, Option } from "commander";
 import { FeatureContextError, FeatureContextService } from "../core/index.js";
 import type { AiProvider } from "../core/index.js";
+import { FEATURE_CONTEXT_DEFAULTS, PROVIDER_CATALOG } from "../core/index.js";
 
 const program = new Command();
 program
@@ -10,8 +11,8 @@ program
   .argument("<feature>", "調べたい機能・目的")
   .addOption(
     new Option("--provider <provider>", "調査に使うAI")
-      .choices(["gemini", "gemini-api", "codex"])
-      .default("gemini")
+      .choices(PROVIDER_CATALOG.map((provider) => provider.id))
+      .default(FEATURE_CONTEXT_DEFAULTS.provider)
   )
   .option("--gemini-model <model>", "Gemini APIのモデル")
   .option("--root <path>", "プロジェクトルート", ".")
@@ -19,8 +20,18 @@ program
   .option("--name <name>", "成果物ディレクトリ名")
   .option("--summary", "機能要約を生成", false)
   .option("--concat", "関連コードを連結", false)
-  .option("--max-output-files <1-5>", "添付用Markdownの最大数", parseInteger, 5)
-  .option("--max-total-chars <n>", "成果物全体の文字数上限", parseInteger, 120_000)
+  .option(
+    "--max-output-files <1-5>",
+    "添付用Markdownの最大数",
+    parseInteger,
+    FEATURE_CONTEXT_DEFAULTS.maxOutputFiles
+  )
+  .option(
+    "--max-total-chars <n>",
+    "成果物全体の文字数上限",
+    parseInteger,
+    FEATURE_CONTEXT_DEFAULTS.maxTotalChars
+  )
   .option("--dry-run", "ファイルを書き込まず調査・梱包を検証", false)
   .option("--verbose", "技術的な詳細を表示", false)
   .option("--force", "既存成果物の上書きを許可", false)

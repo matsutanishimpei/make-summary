@@ -204,36 +204,15 @@ Ctrl+C / SIGTERM でキャンセルすると、実行中のAI CLI子プロセス
 ## アーキテクチャ
 
 ```text
-React Renderer (Desktop GUI)
-        │ IPC
-Electron Main
-  ├─ Encrypted credential store (PC / Mobile shared)
-  ├─ MobileGateway (127.0.0.1)
-  │    ├─ QR pairing / session
-  │    ├─ registered projects only
-  │    ├─ progress SSE / cancel / rebuild
-  │    └─ Markdown ZIP
-  │          │
-  │    Tailscale Serve (private HTTPS)
-  │          │
-  │    Mobile React PWA
-  │
-feature-context-core
-  ├─ InvestigationRunner interface
-  │    ├─ GeminiCliRunner
-  │    ├─ GeminiApiRunner
-  │    └─ CodexCliRunner
-  ├─ safe project snapshot for Gemini API
-  ├─ JSON parser / prompt
-  ├─ path・gitignore・binary・secret validation
-  ├─ deterministic code tree
-  ├─ source collection
-  └─ bundle / manifest packaging
-        │
-Thin CLI (同じcore)
+Desktop React ─┐
+Mobile React ──┼─> Interface adapters ─> Application use cases ─> Core
+CLI ───────────┘              │                    │
+                             └──────── Node / Electron infrastructure
 ```
 
-GUIのReactコンポーネントはAI呼び出しやファイルシステムを直接操作しません。AI呼び出しは `InvestigationRunner` インターフェースで分離され、CLI実行やGemini API通信をモックへ差し替えられます。パス検証、コード収集、梱包はすべてのプロバイダーで同じcoreを通ります。
+生成とbundle再構築は別のapplication use caseです。PCとスマホの実行状態は共通のジョブ管理を使います。AIはregistryで解決する`InvestigationRunner`、ファイルシステムとGitは`ProjectWorkspacePort`の実装として差し替えられます。bundle生成はoverview、コードpack、出力repositoryへ分割され、全プロバイダーが同じ検証・収集・梱包処理を通ります。
+
+スマホゲートウェイはHTTP、QR/セッション認証、ジョブ、成果物配信を分離しています。Desktop IPC、HTTP、`manifest.json`は境界で実行時検証し、Gemini APIキーはrendererやスマホ用DTOへ含めません。詳細な依存方向、内蔵AIプロバイダーの追加方法、各ディレクトリの責務は[アーキテクチャ設計](docs/architecture.md)を参照してください。
 
 ## セキュリティ上の注意
 

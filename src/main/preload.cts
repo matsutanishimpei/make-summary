@@ -1,13 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { BuildOptions, BuildResult, ProgressEvent, RebuildOptions } from "../core/types.js";
+import type { DesktopBuildRequest, DesktopRebuildRequest } from "../contracts/desktop.js";
+import type { BuildResult, ProgressEvent } from "../core/types.js";
 import type { GeminiCredentialStatus } from "../credentials.js";
 import type { GatewayStatus, PairingInfo } from "../gateway/types.js";
 
 export interface DesktopApi {
   selectFolder(): Promise<string | null>;
   selectFolders(): Promise<string[]>;
-  start(jobId: string, options: BuildOptions): Promise<BuildResult>;
-  rebuild(jobId: string, options: RebuildOptions): Promise<BuildResult>;
+  start(jobId: string, options: DesktopBuildRequest): Promise<BuildResult>;
+  rebuild(jobId: string, options: DesktopRebuildRequest): Promise<BuildResult>;
   cancel(jobId: string): Promise<boolean>;
   onProgress(listener: (jobId: string, event: ProgressEvent) => void): () => void;
   readArtifact(filePath: string): Promise<string>;

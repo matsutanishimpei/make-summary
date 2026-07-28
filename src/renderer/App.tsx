@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
-  BuildOptions,
   BuildResult,
   AiProvider,
   ProgressEvent,
-  ProgressStage,
-  ValidationRecord
+  ProgressStage
 } from "../core/types";
+import type { DesktopBuildRequest } from "../contracts/desktop";
 import type { GeminiCredentialStatus } from "../credentials";
 import type { GatewayStatus, PairingInfo } from "../gateway/types";
+import {
+  FEATURE_CONTEXT_DEFAULTS,
+  FEATURE_CONTEXT_LIMITS
+} from "../contracts/defaults";
+import { getProviderDescriptor } from "../contracts/providers";
+import { RemotePanel } from "./features/remote/RemotePanel";
+import { ResultPanel } from "./features/results/ResultPanel";
+import { CommonSettingsPanel } from "./features/settings/CommonSettingsPanel";
+import { normalizeError } from "./utils/errors";
 
 const baseProgressSteps: Array<{ stage: ProgressStage; label: string }> = [
   { stage: "checking-cli", label: "AI CLIを確認中" },
@@ -20,18 +28,16 @@ const baseProgressSteps: Array<{ stage: ProgressStage; label: string }> = [
 
 type RunState = "idle" | "running" | "completed" | "error" | "cancelled";
 type AppView = "desktop" | "mobile" | "settings";
-const defaultGeminiApiModel = "gemini-3.5-flash";
-
 export function App() {
   const [activeView, setActiveView] = useState<AppView>("desktop");
-  const [provider, setProvider] = useState<AiProvider>("gemini");
-  const [geminiApiModel, setGeminiApiModel] = useState(defaultGeminiApiModel);
+  const [provider, setProvider] = useState<AiProvider>(FEATURE_CONTEXT_DEFAULTS.provider);
+  const [geminiApiModel, setGeminiApiModel] = useState<string>(FEATURE_CONTEXT_DEFAULTS.geminiApiModel);
   const [projectRoot, setProjectRoot] = useState("");
   const [feature, setFeature] = useState("");
   const [summary, setSummary] = useState(true);
   const [concat, setConcat] = useState(true);
-  const [maxFiles, setMaxFiles] = useState(5);
-  const [maxChars, setMaxChars] = useState(120_000);
+  const [maxFiles, setMaxFiles] = useState<number>(FEATURE_CONTEXT_DEFAULTS.maxOutputFiles);
+  const [maxChars, setMaxChars] = useState<number>(FEATURE_CONTEXT_DEFAULTS.maxTotalChars);
   const [runState, setRunState] = useState<RunState>("idle");
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -59,7 +65,7 @@ export function App() {
     [jobId]
   );
 
-  const options: BuildOptions = useMemo(
+  const options: DesktopBuildRequest = useMemo(
     () => ({
       projectRoot,
       feature: feature.trim(),
@@ -88,8 +94,7 @@ export function App() {
     void refreshRemoteStatus();
     void refreshCredentialStatus();
   }, []);
-  const providerName =
-    provider === "codex" ? "Codex CLI" : provider === "gemini-api" ? "Gemini API" : "Gemini CLI";
+  const providerName = getProviderDescriptor(provider).label;
   const progressSteps = baseProgressSteps.map((step) =>
     step.stage === "checking-cli" ? { ...step, label: `${providerName}を確認中` } : step
   );
@@ -98,9 +103,9 @@ export function App() {
     runState !== "running" &&
     projectRoot.trim().length > 0 &&
     feature.trim().length > 0 &&
-    maxFiles >= 1 &&
-    maxFiles <= 5 &&
-    maxChars >= 1000;
+    maxFiles >= FEATURE_CONTEXT_LIMITS.minOutputFiles &&
+    maxFiles <= FEATURE_CONTEXT_LIMITS.maxOutputFiles &&
+    maxChars >= FEATURE_CONTEXT_LIMITS.minTotalChars;
 
   async function chooseFolder() {
     const selected = await window.featureContext.selectFolder();
@@ -615,419 +620,4 @@ export function App() {
       )}
     </div>
   );
-}
-
-interface RemotePanelProps {
-  status: GatewayStatus | null;
-  busy: boolean;
-  error: string;
-  notice: string;
-  pairing: PairingInfo | null;
-  onClosePairing: () => void;
-  onRefresh: () => void;
-  onToggle: (enabled: boolean) => void;
-  onConfigureTailscale: () => void;
-  onAddProjects: () => void;
-  onRemoveProject: (projectId: string) => void;
-  onPair: () => void;
-  onRevoke: (sessionId: string) => void;
-  onAutoStart: (enabled: boolean) => void;
-}
-
-function RemotePanel(props: RemotePanelProps) {
-  const status = props.status;
-  return (
-    <section className="panel remote-panel" aria-labelledby="remote-title">
-      <div className="section-heading">
-        <div><span className="step-number">REMOTE</span><h2 id="remote-title">スマホ連携</h2></div>
-        <p>登録済みプロジェクトだけを、Tailscale経由でスマートフォンから操作します。</p>
-      </div>
-
-      {!status ? (
-        <div className="remote-loading">
-          <span>スマホ連携の状態を確認しています。</span>
-          <button type="button" className="text-button" onClick={props.onRefresh}>再確認</button>
-        </div>
-      ) : (
-        <>
-          <div className="remote-status-grid">
-            <div>
-              <span>ローカルサーバー</span>
-              <strong className={status.running ? "ok-text" : ""}>
-                {status.running ? "起動中" : "停止中"}
-              </strong>
-              <small>{status.localUrl}</small>
-            </div>
-            <div>
-              <span>Tailscale</span>
-              <strong className={status.tailscale.connected ? "ok-text" : ""}>
-                {!status.tailscale.installed
-                  ? "未インストール"
-                  : status.tailscale.connected
-                    ? "接続済み"
-                    : "未接続"}
-              </strong>
-              <small>{status.tailscale.dnsName ?? status.tailscale.message ?? "状態を取得できません"}</small>
-            </div>
-            <div>
-              <span>スマホ用URL</span>
-              <strong className={status.publicUrl ? "ok-text" : ""}>
-                {status.publicUrl ? "準備済み" : "未設定"}
-              </strong>
-              <small>{status.publicUrl || "Tailscale Serveを設定してください"}</small>
-            </div>
-          </div>
-
-          <div className="remote-primary-actions">
-            <button
-              type="button"
-              className={status.running ? "danger-quiet" : "secondary"}
-              onClick={() => props.onToggle(!status.running)}
-              disabled={props.busy}
-            >
-              {status.running ? "スマホ連携を停止" : "スマホ連携を起動"}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={props.onConfigureTailscale}
-              disabled={props.busy}
-            >
-              Tailscale Serveを自動設定
-            </button>
-            <button
-              type="button"
-              className="primary"
-              onClick={props.onPair}
-              disabled={props.busy || !status.running || !status.publicUrl}
-            >
-              スマホ登録用QRを表示
-            </button>
-          </div>
-
-          <label className="remote-switch">
-            <input
-              type="checkbox"
-              checked={status.autoStart}
-              onChange={(event) => props.onAutoStart(event.target.checked)}
-              disabled={props.busy}
-            />
-            Windowsログイン時に自動起動し、スマホ連携を待ち受ける
-          </label>
-
-          <div className="remote-box">
-            <div className="remote-box-heading">
-              <div><h3>利用可能なプロジェクト</h3><p>複数フォルダをまとめて選択できます。スマホから任意パスは指定できません。</p></div>
-              <button
-                type="button"
-                className="secondary"
-                onClick={props.onAddProjects}
-                disabled={props.busy}
-              >
-                プロジェクトを追加
-              </button>
-            </div>
-            {status.projects.length ? (
-              <ul className="remote-list">
-                {status.projects.map((project) => (
-                  <li key={project.id}>
-                    <div><strong>{project.label}</strong><small>{project.root}</small></div>
-                    <button type="button" className="text-button" onClick={() => props.onRemoveProject(project.id)} disabled={props.busy}>解除</button>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="remote-empty">まだ登録されていません。</p>}
-          </div>
-
-          <div className="remote-box paired-devices">
-            <h3>登録済みスマートフォン</h3>
-            {status.pairedDevices.length ? (
-              <ul className="remote-list">
-                {status.pairedDevices.map((device) => (
-                  <li key={device.id}>
-                    <div>
-                      <strong>{device.deviceName}</strong>
-                      <small>最終利用: {new Date(device.lastUsedAt).toLocaleString("ja-JP")}</small>
-                    </div>
-                    <button type="button" className="text-button" onClick={() => props.onRevoke(device.id)} disabled={props.busy}>接続解除</button>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="remote-empty">登録済み端末はありません。</p>}
-          </div>
-        </>
-      )}
-
-      {props.error && <div className="error-box remote-message"><pre>{props.error}</pre></div>}
-      {props.notice && <div className="notice">{props.notice}</div>}
-
-      {props.pairing && (
-        <div className="preview-backdrop" role="dialog" aria-modal="true" aria-labelledby="pairing-title">
-          <section className="pairing-dialog">
-            <header>
-              <div><h2 id="pairing-title">スマホでQRコードを読み取る</h2><p>5分以内に読み取ってください。コードは一度だけ使えます。</p></div>
-              <button type="button" className="icon-button" onClick={props.onClosePairing} aria-label="QRコードを閉じる">×</button>
-            </header>
-            <img src={props.pairing.qrDataUrl} alt="スマホ登録用QRコード" />
-            <code>{props.pairing.url}</code>
-            <small>有効期限: {new Date(props.pairing.expiresAt).toLocaleString("ja-JP")}</small>
-          </section>
-        </div>
-      )}
-    </section>
-  );
-}
-
-interface CommonSettingsPanelProps {
-  status: GeminiCredentialStatus | null;
-  apiKey: string;
-  busy: boolean;
-  error: string;
-  notice: string;
-  onApiKeyChange: (value: string) => void;
-  onSave: () => void;
-  onClear: () => void;
-  onRefresh: () => void;
-}
-
-function CommonSettingsPanel(props: CommonSettingsPanelProps) {
-  const statusLabel = !props.status
-    ? "確認中"
-    : props.status.source === "encrypted"
-      ? "Windowsへ暗号化保存済み"
-      : props.status.source === "environment"
-        ? "環境変数 GEMINI_API_KEY を使用中"
-        : "未設定";
-
-  return (
-    <section className="panel settings-panel" aria-labelledby="settings-title">
-      <div className="section-heading">
-        <div><span className="step-number">SETTINGS</span><h2 id="settings-title">共通設定</h2></div>
-        <p>PC版とスマホ版の両方で利用する認証情報を、このPCで一元管理します。</p>
-      </div>
-
-      <div className="settings-card">
-        <div className="settings-card-heading">
-          <div>
-            <h3>Gemini API認証</h3>
-            <p>保存した1つのAPIキーを、PCからの生成とスマホからの生成で共有します。</p>
-          </div>
-          <strong className={props.status?.hasKey ? "credential-state is-set" : "credential-state"}>
-            {statusLabel}
-          </strong>
-        </div>
-
-        <div className="field">
-          <label htmlFor="common-gemini-api-key">Gemini APIキー</label>
-          <input
-            id="common-gemini-api-key"
-            type="password"
-            value={props.apiKey}
-            onChange={(event) => props.onApiKeyChange(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={props.status?.hasKey ? "変更する場合だけ新しいキーを入力" : "Google AI Studioで取得したAPIキー"}
-            disabled={props.busy}
-          />
-          <small>
-            平文は保持せず、ElectronのsafeStorageを通してWindowsの暗号化機能で保存します。
-            スマホ、成果物、manifest、ログへは出力しません。
-          </small>
-        </div>
-
-        <div className="inline-actions">
-          <button
-            type="button"
-            className="primary"
-            onClick={props.onSave}
-            disabled={props.busy || !props.apiKey.trim()}
-          >
-            Windowsへ暗号化保存
-          </button>
-          {props.status?.source === "encrypted" && (
-            <button type="button" className="danger-quiet" onClick={props.onClear} disabled={props.busy}>
-              保存済みキーを削除
-            </button>
-          )}
-          <button type="button" className="text-button" onClick={props.onRefresh} disabled={props.busy}>
-            状態を再確認
-          </button>
-        </div>
-
-        {props.status?.source === "environment" && (
-          <p className="settings-hint">
-            現在はWindowsへ保存したキーではなく、起動環境のGEMINI_API_KEYを利用しています。
-            この画面から暗号化保存すると、保存したキーが優先されます。
-          </p>
-        )}
-      </div>
-
-      <div className="settings-usage-grid">
-        <div><strong>PC版</strong><p>「Gemini API」を選ぶと、ここで設定したキーを自動的に使用します。</p></div>
-        <div><strong>スマホ版</strong><p>スマホへキーを送らず、PC上のゲートウェイが同じキーを使用します。</p></div>
-      </div>
-
-      {props.error && <div className="error-box remote-message"><pre>{props.error}</pre></div>}
-      {props.notice && <div className="notice">{props.notice}</div>}
-    </section>
-  );
-}
-
-interface ResultPanelProps {
-  result: BuildResult;
-  selections: Record<string, boolean>;
-  setSelections: (value: Record<string, boolean>) => void;
-  running: boolean;
-  onPreview: (path: string, name: string) => void;
-  onOpen: () => void;
-  onCopy: () => void;
-  onRegenerate: () => void;
-  onRebuild: () => void;
-}
-
-function ResultPanel(props: ResultPanelProps) {
-  const { manifest } = props.result;
-  const tree = renderTree(manifest.relatedFiles.filter((file) => file.valid));
-  return (
-    <section className="panel result-panel" aria-labelledby="result-title">
-      <div className="section-heading">
-        <div><span className="step-number">03</span><h2 id="result-title">生成結果</h2></div>
-        <p>{manifest.feature}</p>
-      </div>
-
-      <div className="metrics">
-        <Metric
-          label={`${providerDisplayName(manifest.provider.id)}が検出`}
-          value={`${manifest.validation.detected}件`}
-        />
-        <Metric label="コードへ採用" value={`${new Set(manifest.bundledSources.map((item) => item.path)).size}件`} />
-        <Metric label="添付用ファイル" value={`${manifest.bundleFiles.length}件`} />
-        <Metric label="合計文字数" value={manifest.totalChars.toLocaleString()} />
-        <Metric label="概算トークン" value={`約${manifest.estimatedTokens.toLocaleString()}`} />
-      </div>
-      <p className="estimate-note">{manifest.tokenEstimateMethod}</p>
-
-      <div className="result-grid">
-        <div>
-          <h3>関連コードツリー</h3>
-          <pre className="tree">{tree || "(有効な関連ファイルなし)"}</pre>
-        </div>
-        <div>
-          <h3>警告と不明点</h3>
-          <ul className="plain-list">
-            {[...manifest.warnings, ...manifest.uncertainties].length
-              ? [...manifest.warnings, ...manifest.uncertainties].map((item, index) => <li key={index}>{item}</li>)
-              : <li>警告・不明点はありません。</li>}
-          </ul>
-        </div>
-      </div>
-
-      <div className="source-selection">
-        <div className="subheading">
-          <div><h3>関連ソースの選択</h3><p>変更後はAIを再実行せず、bundleだけを再構築できます。</p></div>
-          <button type="button" className="secondary" onClick={props.onRebuild} disabled={props.running}>
-            選択内容でbundleを再構築
-          </button>
-        </div>
-        <div className="source-table-wrap">
-          <table>
-            <thead><tr><th>含める</th><th>パス</th><th>優先度</th><th>役割・選定理由</th></tr></thead>
-            <tbody>
-              {manifest.relatedFiles.map((file, index) => {
-                const key = file.normalizedPath ?? file.path;
-                return (
-                  <tr key={`${key}-${index}`} className={!file.valid ? "excluded-row" : ""}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label={`${key}を含める`}
-                        checked={Boolean(props.selections[key])}
-                        disabled={!file.valid || props.running}
-                        onChange={(event) =>
-                          props.setSelections({ ...props.selections, [key]: event.target.checked })
-                        }
-                      />
-                    </td>
-                    <td><code>{key}</code>{!file.valid && <span className="reason">{file.exclusionReason}</span>}</td>
-                    <td><span className={`priority priority-${file.priority}`}>{file.priority}</span></td>
-                    <td>{file.role}<small>{file.reason}</small></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="omissions">
-        <h3>除外・未収録ファイルと理由</h3>
-        <ul className="plain-list">
-          {manifest.omittedSources.length
-            ? manifest.omittedSources.map((item, index) => <li key={`${item.path}-${index}`}><code>{item.path}</code> — {item.reason}</li>)
-            : <li>ありません。</li>}
-        </ul>
-      </div>
-
-      <div className="artifacts">
-        <h3>生成ファイル</h3>
-        {manifest.bundleFiles.map((file) => (
-          <div className="artifact-row" key={file.name}>
-            <div><strong>{file.name}</strong><small>{file.chars.toLocaleString()}文字</small></div>
-            <button type="button" className="text-button" onClick={() => props.onPreview(file.path, file.name)}>プレビュー</button>
-          </div>
-        ))}
-      </div>
-
-      <div className="actions result-actions">
-        <button type="button" className="secondary" onClick={props.onOpen}>出力フォルダを開く</button>
-        <button type="button" className="secondary" onClick={props.onCopy}>overviewをコピー</button>
-        <button type="button" className="secondary" onClick={props.onRegenerate} disabled={props.running}>成果物全体を再生成</button>
-      </div>
-    </section>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
-}
-
-function providerDisplayName(provider: AiProvider): string {
-  if (provider === "codex") return "Codex";
-  if (provider === "gemini-api") return "Gemini API";
-  return "Gemini";
-}
-
-function normalizeError(error: unknown): { message: string; code?: string; details?: string } {
-  if (error && typeof error === "object") {
-    const value = error as { message?: string; code?: string; details?: string };
-    return { message: value.message ?? "予期しないエラーが発生しました。", code: value.code, details: value.details };
-  }
-  return { message: String(error) };
-}
-
-function renderTree(records: ValidationRecord[]): string {
-  const paths = records
-    .map((record) => record.normalizedPath)
-    .filter((value): value is string => Boolean(value))
-    .sort();
-  const root: Record<string, unknown> = {};
-  for (const filePath of paths) {
-    let node = root;
-    for (const part of filePath.split("/")) {
-      node[part] ??= {};
-      node = node[part] as Record<string, unknown>;
-    }
-  }
-  const lines: string[] = [];
-  const visit = (node: Record<string, unknown>, prefix = "") => {
-    const entries = Object.entries(node);
-    entries.forEach(([name, child], index) => {
-      const last = index === entries.length - 1;
-      const children = child as Record<string, unknown>;
-      lines.push(`${prefix}${last ? "└─ " : "├─ "}${name}${Object.keys(children).length ? "/" : ""}`);
-      visit(children, `${prefix}${last ? "   " : "│  "}`);
-    });
-  };
-  visit(root);
-  return lines.join("\n");
 }

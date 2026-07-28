@@ -1,5 +1,6 @@
 import { FeatureContextError } from "./errors.js";
 import { parseInvestigation } from "./investigation.js";
+import { FEATURE_CONTEXT_DEFAULTS } from "../contracts/defaults.js";
 import {
   buildProjectSnapshot,
   DEFAULT_API_CONTEXT_CHARS,
@@ -15,7 +16,7 @@ import type {
   InvestigationRunRequest
 } from "./types.js";
 
-export const DEFAULT_GEMINI_API_MODEL = "gemini-3.5-flash";
+export const DEFAULT_GEMINI_API_MODEL = FEATURE_CONTEXT_DEFAULTS.geminiApiModel;
 const API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 export interface GeminiApiGenerateRequest {

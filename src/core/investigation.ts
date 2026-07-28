@@ -32,7 +32,7 @@ export function parseInvestigation(raw: string): Investigation {
   }
 }
 
-function validateInvestigation(value: unknown): Investigation {
+export function validateInvestigation(value: unknown): Investigation {
   if (!value || typeof value !== "object") {
     throw new FeatureContextError("INVALID_JSON", undefined, "JSON root must be an object");
   }

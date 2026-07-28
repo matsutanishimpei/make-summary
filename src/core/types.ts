@@ -1,5 +1,7 @@
+import type { ProviderId } from "../contracts/providers.js";
+
 export type Priority = "core" | "supporting" | "test";
-export type AiProvider = "gemini" | "gemini-api" | "codex";
+export type AiProvider = ProviderId;
 
 export interface RunnerConfig {
   geminiApiKey?: string;
