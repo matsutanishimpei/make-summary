@@ -14,5 +14,12 @@
     "declaration": true,
     "types": ["node"]
   },
-  "include": ["src/core/**/*.ts", "src/gateway/**/*.ts", "src/cli/**/*.ts", "src/main/**/*.ts", "src/main/**/*.cts"]
+  "include": [
+    "src/core/**/*.ts",
+    "src/discovery/**/*.ts",
+    "src/gateway/**/*.ts",
+    "src/cli/**/*.ts",
+    "src/main/**/*.ts",
+    "src/main/**/*.cts"
+  ]
 }

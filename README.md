@@ -11,6 +11,7 @@ Feature Context Builder は、プロジェクトフォルダと「ログイン�
 - [技術設計書](docs/architecture.md) — アーキテクチャの選定理由、モジュール間の関係、主要IF
 - [プロダクト企画書](docs/product-overview.md) — 製品が必要な背景、課題、課題に対する機能、プロダクト原則
 - [開発ストーリー](docs/development-story.md) — 対話上の転機とcommitがこの順で入った理由
+- [構造化ファイルコメント](docs/structured-file-comments.md) — 機能、責務、入口、関連、変更時の注意をローカル探索へ伝える記法
 - [Android版 Tailscale・スマホ連携マニュアル](docs/android-tailscale-guide.md) — Androidでの初回接続と利用方法
 
 ## 必要環境
