@@ -126,12 +126,32 @@ function registerResult(result: BuildResult): void {
 
 function serializeError(error: unknown): { message: string; code?: string; details?: string } {
   const original = error instanceof Error ? error : new Error(String(error));
-  const serialized: { message: string; code?: string; details?: string } = { message: original.message };
+  const serialized: { message: string; code?: string; details?: string } = {
+    message: original.message,
+    details: formatUnknownErrorDetails(error, original)
+  };
   if (error instanceof FeatureContextError) {
     serialized.code = error.code;
-    serialized.details = error.details;
+    serialized.details = error.details || serialized.details;
+  } else if (typeof (error as { code?: unknown }).code === "string") {
+    serialized.code = (error as { code: string }).code;
   }
   return serialized;
+}
+
+function formatUnknownErrorDetails(error: unknown, original: Error): string {
+  const value = error as { code?: unknown; details?: unknown; stack?: unknown; name?: unknown };
+  const details = typeof value.details === "string" ? value.details.trim() : "";
+  if (details) return details;
+  return [
+    `name=${typeof value.name === "string" ? value.name : original.name}`,
+    `message=${original.message}`,
+    typeof value.code === "string" ? `code=${value.code}` : undefined,
+    "stack:",
+    typeof value.stack === "string" ? value.stack : original.stack || "<empty>"
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
 }
 
 async function safeInvoke<T>(
