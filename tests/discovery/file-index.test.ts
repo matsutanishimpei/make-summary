@@ -48,6 +48,7 @@ class NotificationWorker:
       expect.objectContaining({ name: "authenticate", kind: "function", exported: true })
     ]);
     expect(login.comments.some((comment) => comment.text.includes("セッション"))).toBe(true);
+    expect(login.imports).toEqual([]);
     expect(login.searchText).toContain("credentialを検証する");
     expect(index.files[1].symbols).toEqual([
       expect.objectContaining({ name: "NotificationWorker", kind: "class" }),

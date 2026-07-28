@@ -1,10 +1,10 @@
 /**
  * @feature-context
- * @feature feature discovery, symbol index, comment index, safe local scan
- * @role プロジェクトを安全に走査し、構造化コメント・通常コメント・シンボルのローカル索引を作る
+ * @feature feature discovery, symbol index, comment index, import graph, safe local scan
+ * @role プロジェクトを安全に走査し、コメント・シンボル・import参照のローカル索引を作る
  * @entry buildDiscoveryIndex
  * @flow project root -> exclusions and gitignore -> safe sample -> symbol/comment index
- * @related symbols.ts, comments.ts, structured-comments.ts, validate.ts
+ * @related symbols.ts, comments.ts, imports.ts, structured-comments.ts, validate.ts
  * @caution 索引は候補発見用であり、送信・収集前の完全な再検証を置き換えない
  */
 
@@ -18,6 +18,7 @@ import {
   readVerifiedProjectFile
 } from "../core/validate.js";
 import { extractComments } from "./comments.js";
+import { extractImports } from "./imports.js";
 import { parseStructuredFileComment } from "./structured-comments.js";
 import { detectLanguage, extractSymbols } from "./symbols.js";
 import type {
@@ -111,6 +112,7 @@ export async function buildDiscoveryIndex(
         const structuredComment = parseStructuredFileComment(sample);
         const comments = extractComments(sample);
         const symbols = extractSymbols(sample, language);
+        const imports = extractImports(sample, language);
         files.push({
           path: relative,
           size: stat.size,
@@ -119,8 +121,9 @@ export async function buildDiscoveryIndex(
           truncated: stat.size > buffer.length,
           symbols,
           comments,
+          imports,
           structuredComment,
-          searchText: createSearchText(relative, structuredComment, symbols, comments)
+          searchText: createSearchText(relative, structuredComment, symbols, comments, imports)
         });
       } catch (error) {
         warnings.push(`${relative}: ローカル索引作成中に読み取れませんでした (${detail(error)})`);
@@ -142,7 +145,8 @@ function createSearchText(
   relativePath: string,
   structured: ReturnType<typeof parseStructuredFileComment>,
   symbols: ReturnType<typeof extractSymbols>,
-  comments: ReturnType<typeof extractComments>
+  comments: ReturnType<typeof extractComments>,
+  imports: ReturnType<typeof extractImports>
 ): string {
   return [
     relativePath,
@@ -152,7 +156,8 @@ function createSearchText(
     ...(structured?.flow ?? []),
     ...(structured?.related ?? []),
     ...symbols.flatMap((symbol) => [symbol.name, symbol.kind]),
-    ...comments.map((comment) => comment.text)
+    ...comments.map((comment) => comment.text),
+    ...imports.map((reference) => reference.specifier)
   ]
     .filter(Boolean)
     .join("\n")
