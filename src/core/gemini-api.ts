@@ -137,7 +137,7 @@ export class FetchGeminiApiTransport implements GeminiApiTransport {
             generationConfig: {
               responseFormat: {
                 text: {
-                  mimeType: "application/json",
+                  mimeType: "APPLICATION_JSON",
                   schema: investigationSchema
                 }
               }
@@ -253,6 +253,13 @@ function createHttpError(status: number, response: string, model: string): Featu
     return new FeatureContextError("API_UNAUTHENTICATED", undefined, details);
   }
   if (status === 429) return new FeatureContextError("API_RATE_LIMIT", undefined, details);
+  if (status === 400) {
+    return new FeatureContextError(
+      "API_FAILED",
+      "Gemini APIがリクエスト形式を受け付けませんでした。アプリを最新版へ更新して再実行してください。",
+      details
+    );
+  }
   if (status === 404) {
     return new FeatureContextError(
       "API_FAILED",

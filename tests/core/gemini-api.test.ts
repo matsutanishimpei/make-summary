@@ -111,7 +111,7 @@ describe("FetchGeminiApiTransport", () => {
     expect(url).toBe("https://example.test/v1beta/models/gemini-test:generateContent");
     expect(init?.headers).toMatchObject({ "x-goog-api-key": "secret-key" });
     const body = JSON.parse(String(init?.body));
-    expect(body.generationConfig.responseFormat.text.mimeType).toBe("application/json");
+    expect(body.generationConfig.responseFormat.text.mimeType).toBe("APPLICATION_JSON");
     expect(body.generationConfig.responseFormat.text.schema.properties.files.type).toBe("array");
     expect(String(init?.body)).not.toContain("secret-key");
   });
@@ -131,6 +131,31 @@ describe("FetchGeminiApiTransport", () => {
     };
     await expect(auth.generate(request)).rejects.toMatchObject({ code: "API_UNAUTHENTICATED" });
     await expect(rate.generate(request)).rejects.toMatchObject({ code: "API_RATE_LIMIT" });
+  });
+
+  it("API仕様不一致の400応答を更新案内付きで表示する", async () => {
+    const transport = new FetchGeminiApiTransport(
+      vi.fn(
+        async () =>
+          new Response(
+            '{"error":{"status":"INVALID_ARGUMENT","message":"invalid response format"}}',
+            { status: 400 }
+          )
+      ) as typeof fetch
+    );
+
+    await expect(
+      transport.generate({
+        apiKey: "secret",
+        model: "gemini-test",
+        prompt: "prompt",
+        timeoutMs: 10_000
+      })
+    ).rejects.toMatchObject({
+      code: "API_FAILED",
+      message: expect.stringContaining("最新版"),
+      details: expect.stringContaining("INVALID_ARGUMENT")
+    });
   });
 
   it("キャンセル時は進行中のHTTP要求も中止する", async () => {
