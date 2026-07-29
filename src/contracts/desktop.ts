@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature desktop IPC contracts, automatic source inclusion, bundle rebuild
+ * @role Desktop境界の生成・再構築入力を検証し、利用者入力を容量条件と調査条件へ限定する
+ * @entry parseDesktopBuildRequest, parseDesktopRebuildRequest
+ * @flow untrusted IPC value -> runtime validation -> build or capacity-only rebuild request
+ * @related ../core/types.ts, ../renderer/App.tsx
+ * @caution file単位のselectionsはDesktop公開契約へ含めず、関連候補の採否をUIへ委ねない
+ */
+
 import { FEATURE_CONTEXT_LIMITS } from "./defaults.js";
 import { isProviderId } from "./providers.js";
 import type { BuildOptions, RebuildOptions } from "../core/types.js";
@@ -28,8 +38,6 @@ export function parseDesktopBuildRequest(value: unknown): DesktopBuildRequest {
     FEATURE_CONTEXT_LIMITS.maxTotalChars,
     "合計文字数"
   );
-  const selections = optionalBooleanMap(input.selections);
-
   return {
     projectRoot,
     feature,
@@ -45,8 +53,7 @@ export function parseDesktopBuildRequest(value: unknown): DesktopBuildRequest {
     ...optionalIntegerProperty(input, "timeoutMs", 1_000, 60 * 60 * 1_000),
     ...optionalBooleanProperty(input, "dryRun"),
     ...optionalBooleanProperty(input, "force"),
-    ...optionalBooleanProperty(input, "verbose"),
-    ...(selections ? { selections } : {})
+    ...optionalBooleanProperty(input, "verbose")
   };
 }
 
@@ -54,7 +61,6 @@ export function parseDesktopRebuildRequest(value: unknown): DesktopRebuildReques
   const input = asRecord(value, "bundle再構築条件が不正です。");
   return {
     manifestPath: requiredString(input.manifestPath, "manifest"),
-    selections: optionalBooleanMap(input.selections, true)!,
     ...optionalIntegerProperty(
       input,
       "maxOutputFiles",
@@ -125,21 +131,4 @@ function optionalBooleanProperty(
   if (value === undefined) return {};
   if (typeof value !== "boolean") throw new Error(`${key}の指定が不正です。`);
   return { [key]: value };
-}
-
-function optionalBooleanMap(
-  value: unknown,
-  required = false
-): Record<string, boolean> | undefined {
-  if (value === undefined && !required) return undefined;
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    Object.keys(value).length > 10_000 ||
-    Object.values(value).some((item) => typeof item !== "boolean")
-  ) {
-    throw new Error("関連ソースの選択が不正です。");
-  }
-  return { ...(value as Record<string, boolean>) };
 }

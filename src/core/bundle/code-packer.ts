@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature bundle generation, code packing, partial source inclusion
+ * @role 優先順位と主groupを保ちながら、実コードを連続行範囲へ分割しgroup間の空きも使って成果物容量を最大限使う
+ * @entry packCode
+ * @flow collected files -> group queues -> primary group + cross-group fill -> largest fitting line ranges -> artifacts and manifest ranges
+ * @related source-markdown.ts, package-bundle.ts, ../types.ts
+ * @caution 元コードを要約・改変せず、同一ファイルの断片は先頭から順番に収録する
+ */
+
 import type { BundledSource, CollectedFile } from "../types.js";
 import type { ArtifactContent } from "./model.js";
 import { renderCodeBlock } from "./source-markdown.js";
@@ -5,6 +15,18 @@ import { renderCodeBlock } from "./source-markdown.js";
 export interface CodePackingResult {
   artifacts: ArtifactContent[];
   bundled: BundledSource[];
+}
+
+interface PendingFile {
+  file: CollectedFile;
+  nextLine: number;
+}
+
+interface PackedRange {
+  file: CollectedFile;
+  lineStart: number;
+  lineEnd: number;
+  block: string;
 }
 
 export function packCode(
@@ -37,7 +59,9 @@ export function packCode(
   const pending = new Map(
     [...buckets].map(([group, bucket]) => [
       group,
-      bucket.map((file) => ({ file, block: renderCodeBlock(file) }))
+      bucket
+        .filter((file) => file.lineCount > 0)
+        .map((file): PendingFile => ({ file, nextLine: 1 }))
     ])
   );
 
@@ -52,36 +76,68 @@ export function packCode(
       if (header.length >= artifactLimit) break;
 
       let content = header;
-      const accepted: CollectedFile[] = [];
-      const remaining: typeof queue = [];
-      for (const candidate of queue) {
-        if (header.length + candidate.block.length > maxFileChars) continue;
-        if (content.length + candidate.block.length <= artifactLimit) {
-          content += candidate.block;
-          accepted.push(candidate.file);
-        } else {
-          remaining.push(candidate);
+      const accepted: PackedRange[] = [];
+      const fillOrder = [
+        group,
+        ...assignedGroups.filter((candidateGroup) => candidateGroup !== group)
+      ];
+      for (const fillGroup of fillOrder) {
+        const fillQueue = pending.get(fillGroup);
+        if (!fillQueue?.length) continue;
+        const remaining: PendingFile[] = [];
+        for (const candidate of fillQueue) {
+          const packed = largestFittingRange(candidate, artifactLimit - content.length);
+          if (!packed) {
+            remaining.push(candidate);
+            continue;
+          }
+
+          content += packed.block;
+          accepted.push(packed);
+          if (packed.lineEnd < candidate.file.lineCount) {
+            remaining.push({ ...candidate, nextLine: packed.lineEnd + 1 });
+          }
         }
+        pending.set(fillGroup, remaining);
       }
-      pending.set(group, remaining);
       if (!accepted.length) continue;
 
       const name = `${String(sequence++).padStart(2, "0")}-${uniqueArtifactName(group, artifacts)}.md`;
       total += content.length;
       artifacts.push({ name, content });
       createdInRound = true;
-      for (const file of accepted) {
+      for (const range of accepted) {
         bundled.push({
-          path: file.record.normalizedPath!,
+          path: range.file.record.normalizedPath!,
           artifact: name,
-          lineStart: 1,
-          lineEnd: file.lineCount
+          lineStart: range.lineStart,
+          lineEnd: range.lineEnd
         });
       }
     }
     if (!createdInRound) break;
   }
   return { artifacts, bundled };
+}
+
+function largestFittingRange(candidate: PendingFile, availableChars: number): PackedRange | null {
+  if (availableChars <= 0) return null;
+
+  const lineStart = candidate.nextLine;
+  let low = lineStart;
+  let high = candidate.file.lineCount;
+  let best: PackedRange | null = null;
+  while (low <= high) {
+    const lineEnd = Math.floor((low + high) / 2);
+    const block = renderCodeBlock(candidate.file, lineStart, lineEnd);
+    if (block.length <= availableChars) {
+      best = { file: candidate.file, lineStart, lineEnd, block };
+      low = lineEnd + 1;
+    } else {
+      high = lineEnd - 1;
+    }
+  }
+  return best;
 }
 
 function sanitizeGroup(group: string): string {

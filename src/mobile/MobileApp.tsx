@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature mobile workflow, automatic source inclusion, remote bundle
+ * @role 登録projectの調査、進捗、成果物共有、容量条件だけを使う再構築をスマホから操作する
+ * @entry MobileApp
+ * @flow authenticated mobile request -> remote build -> automatic source packing -> share or capacity rebuild
+ * @related features/jobs/JobPanel.tsx, api/mobile-client.ts, ../gateway/types.ts
+ * @caution file単位のselectionsを送信せず、PC側で検証済みの関連候補を自動収録する
+ */
+
 import { useEffect, useState } from "react";
 import type { AiProvider } from "../core/types";
 import { FEATURE_CONTEXT_DEFAULTS } from "../contracts/defaults";
@@ -26,7 +36,6 @@ export function MobileApp() {
   const [maxFiles, setMaxFiles] = useState<number>(FEATURE_CONTEXT_DEFAULTS.maxOutputFiles);
   const [maxChars, setMaxChars] = useState<number>(FEATURE_CONTEXT_DEFAULTS.maxTotalChars);
   const [model, setModel] = useState<string>(FEATURE_CONTEXT_DEFAULTS.geminiApiModel);
-  const [selections, setSelections] = useState<Record<string, boolean>>({});
   const [preview, setPreview] = useState<{ name: string; content: string } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -44,7 +53,6 @@ export function MobileApp() {
       const next = JSON.parse((event as MessageEvent).data) as RemoteJob;
       setActiveJob(next);
       setJobs((current) => [next, ...current.filter((item) => item.id !== next.id)]);
-      if (next.result) setSelections(next.result.selections);
       if (!["queued", "running"].includes(next.state)) events.close();
     });
     events.onerror = () => {
@@ -88,7 +96,6 @@ export function MobileApp() {
     const latest = jobResponse.jobs[0];
     if (latest) {
       setActiveJob(latest);
-      if (latest.result) setSelections(latest.result.selections);
     }
   }
 
@@ -131,7 +138,6 @@ export function MobileApp() {
     try {
       const response = await api<{ job: RemoteJob }>(`/api/v1/jobs/${id}`);
       setActiveJob(response.job);
-      if (response.job.result) setSelections(response.job.result.selections);
     } catch (caught) {
       setError(errorMessage(caught));
     }
@@ -146,7 +152,6 @@ export function MobileApp() {
         {
           method: "POST",
           body: JSON.stringify({
-            selections,
             maxOutputFiles: maxFiles,
             maxTotalChars: maxChars
           })
@@ -305,8 +310,6 @@ export function MobileApp() {
         {activeJob && (
           <JobPanel
             job={activeJob}
-            selections={selections}
-            setSelections={setSelections}
             onCancel={cancelJob}
             onPreview={showPreview}
             onShare={shareArtifacts}
@@ -325,7 +328,6 @@ export function MobileApp() {
                   key={job.id}
                   onClick={() => {
                     setActiveJob(job);
-                    if (job.result) setSelections(job.result.selections);
                   }}
                 >
                   <span>{job.feature}</span>

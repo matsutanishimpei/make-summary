@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature bundle overview, source coverage, manifest presentation
+ * @role bundleの調査結果、関連tree、実コードの全文・部分収録状況を人向けMarkdownへ描画する
+ * @entry renderOverview
+ * @flow package input + bundled line ranges -> coverage labels -> overview markdown
+ * @related package-bundle.ts, code-packer.ts, ../tree.ts
+ * @caution 一部だけ収録したファイルを全文収録と表示しない
+ */
+
 import { getProviderDescriptor } from "../../contracts/providers.js";
 import { buildCodeTree } from "../tree.js";
 import type { BundledSource, OmittedSource } from "../types.js";
@@ -11,6 +21,7 @@ export function renderOverview(
   }
 ): string {
   const bundled = new Set(input.bundledSources.map((item) => item.path));
+  const coverage = sourceCoverage(input);
   const valid = input.records.filter((record) => record.valid && record.normalizedPath);
   const tree = buildCodeTree(
     valid.map((record) => ({
@@ -37,7 +48,7 @@ export function renderOverview(
     "|---|---|---|---|---|---|",
     ...input.records.map((record) => {
       const filePath = record.normalizedPath ?? record.path;
-      return `| ${escapeCell(filePath)} | ${escapeCell(record.role)} | ${escapeCell(record.reason)} | ${record.priority} | ${escapeCell(record.group)} | ${bundled.has(filePath) ? "収録" : "未収録"} |`;
+      return `| ${escapeCell(filePath)} | ${escapeCell(record.role)} | ${escapeCell(record.reason)} | ${record.priority} | ${escapeCell(record.group)} | ${coverage.get(filePath) ?? "未収録"} |`;
     }),
     "",
     "## 処理フロー",
@@ -108,6 +119,32 @@ export function renderOverview(
   }
   lines.push("");
   return lines.join("\n");
+}
+
+function sourceCoverage(input: PackageInput & { bundledSources: BundledSource[] }): Map<string, string> {
+  const lineCounts = new Map(
+    input.collected.map((file) => [file.record.normalizedPath!, file.lineCount])
+  );
+  const ranges = new Map<string, BundledSource[]>();
+  for (const item of input.bundledSources) {
+    const values = ranges.get(item.path) ?? [];
+    values.push(item);
+    ranges.set(item.path, values);
+  }
+
+  return new Map(
+    [...ranges].map(([filePath, values]) => {
+      const ordered = [...values].sort((left, right) => left.lineStart - right.lineStart);
+      const lineCount = lineCounts.get(filePath);
+      let nextLine = 1;
+      const complete = lineCount !== undefined && ordered.every((range) => {
+        if (range.lineStart !== nextLine) return false;
+        nextLine = range.lineEnd + 1;
+        return true;
+      }) && nextLine > lineCount;
+      return [filePath, complete ? "全文収録" : "一部収録"];
+    })
+  );
 }
 
 function summaryLines(items: string[] | undefined, emptyMessage: string): string[] {

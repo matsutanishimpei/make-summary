@@ -21,7 +21,7 @@
 | Port | applicationが外部機能を呼ぶためのIF。実装をテスト用に交換できる |
 | DTO | PC画面とmain process、またはスマホとGatewayの間で受け渡すデータ |
 | bundle | ブラウザAIでの仕様検討と、開発エージェントへの引き渡しに再利用する最大5件のMarkdown |
-| manifest | 調査・検証・選択・成果物の情報を保存する内部管理用JSON |
+| manifest | 調査・検証・自動収録・成果物の情報を保存する内部管理用JSON |
 
 ## 2. 全体像
 
@@ -60,7 +60,7 @@ flowchart LR
 | 選定 | 理由 | 受け入れたトレードオフ |
 |---|---|---|
 | Electron | Node.jsのファイル操作、子プロセス、Windowsのフォルダ選択、暗号化保存、タスクトレイを1つのアプリから利用できる | ネイティブ専用実装より配布サイズとメモリ使用量が大きい |
-| React | 入力、進捗、結果、再選択、スマホ設定の状態変化をコンポーネントとして整理しやすい | 小さな静的画面より構成要素が増える |
+| React | 入力、進捗、自動選定結果、スマホ設定の状態変化をコンポーネントとして整理しやすい | 小さな静的画面より構成要素が増える |
 | TypeScript | PC、スマホ、IPC、HTTP、coreのデータ契約を共有できる | 実行時には型が消えるため、境界では別途バリデーションが必要 |
 | Vite | PC rendererとスマホPWAを高速かつ単純にビルドできる | Electron mainと画面でビルド経路が分かれる |
 
@@ -194,11 +194,11 @@ TypeScriptの型だけでは不正なIPC入力を防げないため、`DesktopBu
 成果物は、人が読んでブラウザAIへ添付するMarkdownと、機械が再構築に使う`manifest.json`に分けています。
 
 - Markdown: 利用者とブラウザAIが読む。最大5件
-- manifest: 検証結果、選択、出力情報、警告、スキーマ版を保持する。添付件数には含めない
+- manifest: 検証結果、自動収録結果、出力情報、警告、スキーマ版を保持する。添付件数には含めない
 
 manifestは読み込み時に実行時検証し、旧Gemini CLI専用形式は境界で現行形式へ移行します。
 
-bundleを一時的な画面表示ではなくファイルとして残すことには、費用面の設計理由もあります。仕様が変わるたびに開発エージェントへリポジトリを再探索させず、同じ検証済みbundleをブラウザAIとの複数回の対話で再利用できます。収録ソースだけを変えたい場合も、manifestからAIなしで再構築できます。これにより、開発エージェントのトークンは仕様確定後の実装とテストへ集中できます。
+bundleを一時的な画面表示ではなくファイルとして残すことには、費用面の設計理由もあります。仕様が変わるたびに開発エージェントへリポジトリを再探索させず、同じ検証済みbundleをブラウザAIとの複数回の対話で再利用できます。容量上限を変えたい場合も、manifestからAIなしで全関連候補を再構築できます。これにより、開発エージェントのトークンは仕様確定後の実装とテストへ集中できます。
 
 ### 3.9 ローカル機能探索core
 
@@ -263,7 +263,7 @@ sequenceDiagram
     Runner-->>UseCase: Investigation
     UseCase->>Workspace: 関連パスを再検証
     Workspace-->>UseCase: ValidationRecord[]
-    UseCase->>Workspace: 選択済み実ファイルを収集
+    UseCase->>Workspace: 安全な全関連ファイルを収集
     Workspace-->>UseCase: CollectedFile[]
     UseCase->>Bundle: PackageInput
     Bundle-->>UseCase: Manifest
@@ -282,13 +282,13 @@ sequenceDiagram
     participant Workspace as ProjectWorkspacePort
     participant Bundle as packageBundle
 
-    User->>UI: 関連ソースのチェックを変更
+    User->>UI: 最大ファイル数・文字数を変更
     UI->>Rebuild: RebuildOptions
     Rebuild->>Manifest: manifestを検証・移行
     Manifest-->>Rebuild: Manifest
     Rebuild->>Workspace: 現在の実ファイルを再検証・再収集
     Note over Rebuild: AIは再実行しない
-    Rebuild->>Bundle: 更新したPackageInput
+    Rebuild->>Bundle: 全関連候補と更新した容量条件
     Bundle-->>UI: 新しいBuildResult
 ```
 
@@ -346,7 +346,7 @@ class FeatureContextService {
 | メソッド | 入力 | 出力 | 副作用 |
 |---|---|---|---|
 | `build` | プロジェクト、機能名、AI、要約・連結、各上限 | `BuildResult` | AI調査、project読み取り、成果物書き込み |
-| `rebuild` | manifest、ユーザー選択、変更後の上限 | `BuildResult` | AIは呼ばず、再検証・再収集・成果物再生成 |
+| `rebuild` | manifest、変更後の容量上限 | `BuildResult` | AIは呼ばず、全関連候補の再検証・再収集・成果物再生成 |
 
 `BuildFeatureContext`と`RebuildFeatureBundle`は、façadeの内部で使う独立したユースケースです。どちらも`execute(options, report?, signal?)`を公開し、GUI固有の状態やHTTP responseは扱いません。
 
@@ -382,7 +382,7 @@ interface ProjectWorkspacePort {
   resolveOutputDir(root: string, outputBase: string | undefined, name: string): string;
   assertOutputInside(root: string, outputDir: string): void;
   assertOutputAvailable(outputDir: string): Promise<void>;
-  validateRelatedFiles(root, files, selections?): Promise<ValidationOutcome>;
+  validateRelatedFiles(root, files): Promise<ValidationOutcome>;
   collectSelectedFiles(root, records): Promise<CollectionOutcome>;
   getGitCommitId(root: string): Promise<string | null>;
   readManifest(manifestPath: string): Promise<Manifest>;
@@ -406,9 +406,9 @@ type PackageInput;
 | ファイル | IF | 責務 |
 |---|---|---|
 | `collector.ts` | `collectSelectedFiles` | 実path、差し替え、秘密情報を再確認してcode収集 |
-| `code-packer.ts` | `packCode` | 優先度と意味groupを考慮してcode成果物へ配置 |
+| `code-packer.ts` | `packCode` | 優先度と意味groupを考慮し、大きなfileは連続行範囲へ分割してcode成果物の容量を使い切る |
 | `overview-renderer.ts` | `renderOverview` | tree、理由、flow、警告、未収録をoverviewへ描画 |
-| `source-markdown.ts` | `renderCodeBlock` | 元pathと適切なcode fenceを付与 |
+| `source-markdown.ts` | `renderCodeBlock` | 元path、実際の行範囲、適切なcode fenceを付与 |
 | `output-repository.ts` | 書き込み用内部IF | 一時directoryと復元処理を使った安全な書き込み |
 | `package-bundle.ts` | `packageBundle` | 上記を統括し、Manifestを確定 |
 
@@ -460,8 +460,6 @@ class JobCoordinator<Metadata, Result, Progress> {
 | `timeoutMs` | 任意 | AI調査のtimeout |
 | `dryRun` | 任意 | ファイルを書かずに検証 |
 | `force` | 任意 | 既存成果物の置換を許可 |
-| `selections` | 任意 | ファイルごとの手動選択 |
-
 `geminiApiKey`はapplication内部でだけ利用できる一時値です。Desktop IPC用の`DesktopBuildRequest`からは除外されています。
 
 #### `BuildResult`
@@ -481,7 +479,7 @@ manifest schema versionは`1.1`です。次を保持します。
 - 機能名、project root、生成日時、Git commit ID
 - 実行option、AIプロバイダーとversion
 - AIの調査結果
-- 全関連fileと検証・選択結果
+- 全関連fileと検証・自動収録結果
 - 収録・未収録sourceと理由
 - bundle file名と文字数
 - 合計文字数、概算token、警告、不明点
@@ -497,7 +495,7 @@ rendererへ公開される唯一のOS連携窓口は`window.featureContext: Desk
 | folder | `selectFolder()` | PC調査用folderを1件選択 |
 | folder | `selectFolders()` | スマホ登録用folderを複数選択 |
 | job | `start(jobId, request)` | 調査生成を開始 |
-| job | `rebuild(jobId, request)` | AIなしでbundle再構築 |
+| job | `rebuild(jobId, request)` | file選択を変えず、容量条件だけでAIなしのbundle再構築 |
 | job | `cancel(jobId)` | 子process・HTTP requestを含めcancel |
 | job | `onProgress(listener)` | 進捗通知を購読 |
 | 成果物 | `readArtifact(path)` | 許可済み成果物をpreview |
@@ -533,7 +531,7 @@ main processは、完了jobから登録した成果物pathだけを読み取り�
 | GET | `/api/v1/jobs/:id` | Cookie | jobの現在状態 |
 | GET | `/api/v1/jobs/:id/events` | Cookie | SSE進捗購読 |
 | POST | `/api/v1/jobs/:id/cancel` | Cookie | jobをcancel |
-| POST | `/api/v1/jobs/:id/rebuild` | `RebuildRequest` | AIなしで再構築 |
+| POST | `/api/v1/jobs/:id/rebuild` | `RebuildRequest` | 容量条件だけでAIなしに再構築 |
 | GET | `/api/v1/jobs/:id/artifacts/:name` | Cookie | Markdown preview/download |
 | GET | `/api/v1/jobs/:id/bundle.zip` | Cookie | MarkdownだけのZIP |
 
@@ -567,10 +565,11 @@ PCの`App`とスマホの`MobileApp`はcomposition rootです。
 
 | UIモジュール | 入力 | 外へ通知する操作 |
 |---|---|---|
-| `ResultPanel` | `BuildResult`、file選択、実行状態 | preview、open、copy、再生成、再構築 |
+| `ResultPanel` | `BuildResult`、実行状態 | 自動選定sourceの確認、preview、open、copy、再生成、容量再構築 |
 | `RemotePanel` | `GatewayStatus`、pairing、busy/error | 起動停止、project登録、QR、端末解除、auto start |
 | `CommonSettingsPanel` | credential状態、入力中APIキー | 保存、削除、再確認 |
-| `JobPanel` | `RemoteJob`、file選択 | cancel、preview、share、rebuild |
+| `FileCommentHelp` | なし | 構造化file commentの対象、タグ粒度、避ける内容、更新規則を表示 |
+| `JobPanel` | `RemoteJob` | 自動選定sourceの確認、cancel、preview、share、容量再構築 |
 | `mobileApi` | URL、`RequestInit` | credential付きJSON responseまたは利用者向けerror |
 
 React component内では、Node.jsのファイル読み書き、AI呼び出し、APIキー保存を実装しません。

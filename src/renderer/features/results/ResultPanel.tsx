@@ -1,10 +1,18 @@
+/**
+ * @feature-context
+ * @feature desktop results, automatic source inclusion, artifact preview
+ * @role 自動選定された関連sourceと収録結果を読み取り専用で示し、成果物操作を提供する
+ * @entry ResultPanel
+ * @flow BuildResult -> metrics and read-only source rationale -> preview, rebuild, regenerate
+ * @related ../../App.tsx, ../../../core/types.ts
+ * @caution file採否のcheckboxを提供せず、再構築は容量条件の反映だけに使う
+ */
+
 import { getProviderDescriptor } from "../../../contracts/providers";
 import type { BuildResult, ValidationRecord } from "../../../core/types";
 
 export interface ResultPanelProps {
   result: BuildResult;
-  selections: Record<string, boolean>;
-  setSelections: (value: Record<string, boolean>) => void;
   running: boolean;
   onPreview: (path: string, name: string) => void;
   onOpen: () => void;
@@ -52,30 +60,20 @@ export function ResultPanel(props: ResultPanelProps) {
 
       <div className="source-selection">
         <div className="subheading">
-          <div><h3>関連ソースの選択</h3><p>変更後はAIを再実行せず、bundleだけを再構築できます。</p></div>
+          <div><h3>自動選定された関連ソース</h3><p>安全な関連候補を優先度順に、容量上限まで自動収録します。</p></div>
           <button type="button" className="secondary" onClick={props.onRebuild} disabled={props.running}>
-            選択内容でbundleを再構築
+            現在の上限でbundleを再構築
           </button>
         </div>
         <div className="source-table-wrap">
           <table>
-            <thead><tr><th>含める</th><th>パス</th><th>優先度</th><th>役割・選定理由</th></tr></thead>
+            <thead><tr><th>状態</th><th>パス</th><th>優先度</th><th>役割・選定理由</th></tr></thead>
             <tbody>
               {manifest.relatedFiles.map((file, index) => {
                 const key = file.normalizedPath ?? file.path;
                 return (
                   <tr key={`${key}-${index}`} className={!file.valid ? "excluded-row" : ""}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label={`${key}を含める`}
-                        checked={Boolean(props.selections[key])}
-                        disabled={!file.valid || props.running}
-                        onChange={(event) =>
-                          props.setSelections({ ...props.selections, [key]: event.target.checked })
-                        }
-                      />
-                    </td>
+                    <td>{file.valid ? "自動採用" : "除外"}</td>
                     <td><code>{key}</code>{!file.valid && <span className="reason">{file.exclusionReason}</span>}</td>
                     <td><span className={`priority priority-${file.priority}`}>{file.priority}</span></td>
                     <td>{file.role}<small>{file.reason}</small></td>

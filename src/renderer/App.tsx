@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature desktop workflow, automatic related-source inclusion, result actions
+ * @role PC版の調査条件、進捗、成果物操作、容量再構築、ファイルコメントhelpを統括する
+ * @entry App
+ * @flow user investigation settings -> build -> automatic source packing -> preview or capacity rebuild
+ * @related features/results/ResultPanel.tsx, features/help/FileCommentHelp.tsx, ../contracts/desktop.ts
+ * @caution 関連候補のfile単位選択UIを持たず、安全な候補はcoreの優先順位で自動収録する
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import type {
   BuildResult,
@@ -15,6 +25,7 @@ import {
 import { getProviderDescriptor } from "../contracts/providers";
 import { RemotePanel } from "./features/remote/RemotePanel";
 import { ResultPanel } from "./features/results/ResultPanel";
+import { FileCommentHelp } from "./features/help/FileCommentHelp";
 import { CommonSettingsPanel } from "./features/settings/CommonSettingsPanel";
 import { normalizeError } from "./utils/errors";
 
@@ -27,7 +38,7 @@ const baseProgressSteps: Array<{ stage: ProgressStage; label: string }> = [
 ];
 
 type RunState = "idle" | "running" | "completed" | "error" | "cancelled";
-type AppView = "desktop" | "mobile" | "settings";
+type AppView = "desktop" | "mobile" | "settings" | "help";
 export function App() {
   const [activeView, setActiveView] = useState<AppView>("desktop");
   const [provider, setProvider] = useState<AiProvider>(FEATURE_CONTEXT_DEFAULTS.provider);
@@ -42,7 +53,6 @@ export function App() {
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [result, setResult] = useState<BuildResult | null>(null);
-  const [selections, setSelections] = useState<Record<string, boolean>>({});
   const [preview, setPreview] = useState<{ name: string; content: string } | null>(null);
   const [error, setError] = useState<{ message: string; details?: string } | null>(null);
   const [notice, setNotice] = useState("");
@@ -172,13 +182,12 @@ export function App() {
     try {
       const next = await window.featureContext.rebuild(id, {
         manifestPath: result.manifestPath,
-        selections,
         maxOutputFiles: maxFiles,
         maxTotalChars: maxChars,
         force: true
       });
       acceptResult(next);
-      setNotice("AIを再実行せず、選択内容からbundleを再構築しました。");
+      setNotice("AIを再実行せず、現在の容量上限でbundleを再構築しました。");
     } catch (caught) {
       const problem = normalizeError(caught);
       setError({ message: problem.message, details: problem.details });
@@ -190,7 +199,6 @@ export function App() {
 
   function acceptResult(next: BuildResult) {
     setResult(next);
-    setSelections(next.manifest.selections);
     setRunState("completed");
     setProgress({ stage: "completed", message: "完了" });
   }
@@ -308,10 +316,12 @@ export function App() {
           <span className={`status-badge ${remoteStatus?.running ? "status-completed" : ""}`}>
             {remoteStatus?.running ? "連携中" : "停止中"}
           </span>
-        ) : (
+        ) : activeView === "settings" ? (
           <span className={`status-badge ${credentialStatus?.hasKey ? "status-completed" : ""}`}>
             {credentialStatus?.hasKey ? "APIキー設定済み" : "APIキー未設定"}
           </span>
+        ) : (
+          <span className="status-badge">ガイド</span>
         )}
       </header>
 
@@ -343,6 +353,15 @@ export function App() {
           >
             共通設定
             <small>PC・スマホ共通</small>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "help"}
+            onClick={() => setActiveView("help")}
+          >
+            コメント指針
+            <small>機能・責務の残し方</small>
           </button>
         </div>
       </nav>
@@ -533,8 +552,6 @@ export function App() {
         {result && (
           <ResultPanel
             result={result}
-            selections={selections}
-            setSelections={setSelections}
             running={runState === "running"}
             onPreview={showPreview}
             onOpen={() => window.featureContext.openOutput(result.outputDir)}
@@ -605,6 +622,8 @@ export function App() {
             onRefresh={refreshCredentialStatus}
           />
         )}
+
+        {activeView === "help" && <FileCommentHelp />}
       </main>
 
       {preview && (

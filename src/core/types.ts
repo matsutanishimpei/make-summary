@@ -88,7 +88,6 @@ export interface BuildOptions {
   dryRun?: boolean;
   force?: boolean;
   verbose?: boolean;
-  selections?: Record<string, boolean>;
 }
 
 export interface ValidationRecord extends InvestigationFile {
@@ -163,7 +162,6 @@ export interface BuildResult {
 
 export interface RebuildOptions {
   manifestPath: string;
-  selections: Record<string, boolean>;
   maxOutputFiles?: number;
   maxTotalChars?: number;
   force?: boolean;

@@ -1,3 +1,10 @@
+/**
+ * @feature-context
+ * @feature mobile UI, automatic source inclusion, responsive results
+ * @role スマホの調査フォーム、job進捗、読み取り専用source一覧、成果物操作を配置する
+ * @related MobileApp.tsx, features/jobs/JobPanel.tsx
+ */
+
 :root {
   font-family: Inter, "Noto Sans JP", system-ui, sans-serif;
   color: #172a33;
@@ -78,10 +85,10 @@ label small { color: var(--muted); font-weight: 400; }
 .mobile-artifacts a { color: var(--accent); font-size: 12px; }
 .mobile-sources, .mobile-warnings { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .mobile-sources summary, .mobile-warnings summary { cursor: pointer; font-weight: 700; }
-.mobile-sources > label { display: grid; grid-template-columns: auto 1fr; margin: 10px 0; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
-.mobile-sources input { width: 17px; height: 17px; }
+.mobile-sources > div { display: flex; justify-content: space-between; gap: 12px; margin: 10px 0; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
 .mobile-sources code { font-size: 11px; overflow-wrap: anywhere; }
-.mobile-sources label small { display: block; margin-top: 4px; }
+.mobile-sources div small { display: block; margin-top: 4px; }
+.mobile-sources div strong { flex: 0 0 auto; font-size: 10px; color: var(--accent); }
 .invalid-source { opacity: .5; }
 .mobile-warnings ul { max-height: 220px; overflow: auto; padding-left: 20px; font-size: 12px; line-height: 1.55; }
 .job-history { display: grid; gap: 7px; }

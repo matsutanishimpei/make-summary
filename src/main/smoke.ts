@@ -88,7 +88,7 @@ app.whenReady().then(async () => {
       state.registerProjectsApi !== "function" ||
       state.credentialApi !== "function" ||
       state.generateButton !== "コンテキストを生成" ||
-      state.views.length !== 3 ||
+      state.views.length !== 4 ||
       JSON.stringify(state.providers) !== JSON.stringify(["gemini", "gemini-api", "codex"]) ||
       !mobileEntryExists
     ) {

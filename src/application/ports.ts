@@ -24,8 +24,7 @@ export interface ProjectWorkspacePort {
   assertOutputAvailable(outputDir: string): Promise<void>;
   validateRelatedFiles(
     projectRoot: string,
-    files: InvestigationFile[],
-    selections?: Record<string, boolean>
+    files: InvestigationFile[]
   ): Promise<ValidationOutcome>;
   collectSelectedFiles(
     projectRoot: string,

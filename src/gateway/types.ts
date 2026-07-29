@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature mobile gateway contracts, automatic source inclusion, remote jobs
+ * @role スマホへ公開するproject・job・artifact・容量再構築DTOを定義する
+ * @entry MobileBuildRequest, RemoteJob, RebuildRequest
+ * @flow gateway domain state -> source-selection-free mobile DTO
+ * @related job-service.ts, ../mobile/MobileApp.tsx
+ * @caution project path、API key、file単位のselectionsをスマホ公開契約へ含めない
+ */
+
 import type {
   AiProvider,
   ProgressEvent,
@@ -101,7 +111,6 @@ export interface RemoteJobResult {
       | "exclusionReason"
     >
   >;
-  selections: Record<string, boolean>;
   zipUrl: string;
 }
 
@@ -122,7 +131,6 @@ export interface RemoteJob {
 }
 
 export interface RebuildRequest {
-  selections: Record<string, boolean>;
   maxOutputFiles?: number;
   maxTotalChars?: number;
 }

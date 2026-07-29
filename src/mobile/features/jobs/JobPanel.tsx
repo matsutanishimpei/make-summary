@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature mobile job results, automatic source inclusion, artifact sharing
+ * @role remote jobの進捗と成果物、自動選定された関連sourceの根拠を読み取り専用で表示する
+ * @entry JobPanel
+ * @flow RemoteJob -> progress or result -> artifacts, source rationale, capacity rebuild
+ * @related ../../MobileApp.tsx, ../../../gateway/types.ts
+ * @caution sourceのcheckboxを持たず、利用者は関連候補の採否を変更しない
+ */
+
 import type { ProgressStage } from "../../../core/types";
 import type { RemoteJob } from "../../../gateway/types";
 import { stateLabel } from "../../utils";
@@ -12,8 +22,6 @@ const progressLabels: Array<{ stage: ProgressStage; label: string }> = [
 
 export interface JobPanelProps {
   job: RemoteJob;
-  selections: Record<string, boolean>;
-  setSelections: (value: Record<string, boolean>) => void;
   onCancel: () => void;
   onPreview: (name: string) => void;
   onShare: () => void;
@@ -71,24 +79,17 @@ export function JobPanel(props: JobPanelProps) {
           </div>
 
           <details className="mobile-sources">
-            <summary>関連ソースを選び直す</summary>
+            <summary>自動選定された関連ソース</summary>
             {job.result.relatedFiles.map((file, index) => {
               const key = file.normalizedPath ?? file.path;
               return (
-                <label key={`${key}-${index}`} className={!file.valid ? "invalid-source" : ""}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(props.selections[key])}
-                    disabled={!file.valid}
-                    onChange={(event) =>
-                      props.setSelections({ ...props.selections, [key]: event.target.checked })
-                    }
-                  />
+                <div key={`${key}-${index}`} className={!file.valid ? "invalid-source" : ""}>
                   <span><code>{key}</code><small>{file.role} — {file.reason}</small></span>
-                </label>
+                  <strong>{file.valid ? "自動採用" : "除外"}</strong>
+                </div>
               );
             })}
-            <button type="button" onClick={props.onRebuild}>選択内容で再構築</button>
+            <button type="button" onClick={props.onRebuild}>現在の上限で再構築</button>
           </details>
 
           {[...job.result.warnings, ...job.result.uncertainties].length > 0 && (

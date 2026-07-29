@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature bundle rebuild, automatic source inclusion, capacity adjustment
+ * @role 保存済み調査結果を再検証し、AIを再実行せず現在の容量条件で全関連候補を再梱包する
+ * @entry RebuildFeatureBundle.execute
+ * @flow manifest -> automatic candidate validation -> collection -> capacity-aware package
+ * @related build-context.ts, ports.ts, ../core/bundle/package-bundle.ts
+ * @caution file選択を受けず、安全な全関連候補を再検証して容量条件だけを変更する
+ */
+
 import path from "node:path";
 import { FeatureContextError, asFeatureContextError } from "../core/errors.js";
 import type {
@@ -23,8 +33,7 @@ export class RebuildFeatureBundle {
       this.dependencies.workspace.assertOutputInside(projectRoot, outputDir);
       const validation = await this.dependencies.workspace.validateRelatedFiles(
         projectRoot,
-        manifest.investigation.files,
-        options.selections
+        manifest.investigation.files
       );
       if (!validation.records.some((record) => record.valid)) {
         throw new FeatureContextError("NO_VALID_FILES");

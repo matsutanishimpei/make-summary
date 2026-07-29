@@ -1,11 +1,11 @@
 /**
  * @feature-context
  * @feature safe file validation, feature discovery, secret exclusion
- * @role プロジェクト外参照・生成物・秘密情報path・binaryをcore境界で拒否する
+ * @role 全関連候補を収録対象にしつつ、プロジェクト外参照・生成物・秘密情報path・binaryをcore境界で拒否する
  * @entry validateRelatedFiles, matchesBuiltInExclusion, readVerifiedProjectFile
  * @flow AI candidate or local index path -> normalize -> exclusion -> realpath verification
  * @related gitignore.ts, secrets.ts, discovery/file-index.ts
- * @caution .feature-contextを含む生成成果物は再調査・API送信対象へ戻さない
+ * @caution AIのrecommended値や利用者入力で候補を除外せず、安全検証に通った関連候補はすべて収録対象にする
  */
 
 import { promises as fs } from "node:fs";
@@ -32,8 +32,7 @@ export interface ValidationOutcome {
 
 export async function validateRelatedFiles(
   projectRoot: string,
-  files: InvestigationFile[],
-  selections: Record<string, boolean> = {}
+  files: InvestigationFile[]
 ): Promise<ValidationOutcome> {
   let rootReal: string;
   try {
@@ -56,16 +55,12 @@ export async function validateRelatedFiles(
 
   for (const file of files) {
     const normalized = normalizeRelativePath(file.path);
-    const selectionKey = normalized ?? file.path;
-    const userSelected = Object.prototype.hasOwnProperty.call(selections, selectionKey)
-      ? selections[selectionKey]
-      : null;
     const base: ValidationRecord = {
       ...file,
       ...(normalized ? { normalizedPath: normalized } : {}),
       valid: false,
       included: false,
-      userSelected
+      userSelected: null
     };
     const exclude = (reason: string) => {
       const record = { ...base, exclusionReason: reason };
@@ -120,7 +115,7 @@ export async function validateRelatedFiles(
         ...base,
         normalizedPath: normalized,
         valid: true,
-        included: userSelected ?? file.recommended,
+        included: true,
         size: stat.size
       });
     } catch (error) {

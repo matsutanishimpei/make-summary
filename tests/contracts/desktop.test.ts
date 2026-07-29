@@ -37,19 +37,15 @@ describe("desktop IPC contracts", () => {
     ).toThrow();
   });
 
-  it("bundle再構築の選択値を検証する", () => {
-    expect(
-      parseDesktopRebuildRequest({
-        manifestPath: "C:\\project\\.feature-context\\login\\manifest.json",
-        selections: { "src/login.ts": true },
-        maxOutputFiles: 3
-      }).selections
-    ).toEqual({ "src/login.ts": true });
-    expect(() =>
-      parseDesktopRebuildRequest({
-        manifestPath: "manifest.json",
-        selections: { "src/login.ts": "yes" }
-      })
-    ).toThrow();
+  it("bundle再構築は容量条件だけを受け取り、file選択を公開しない", () => {
+    const parsed = parseDesktopRebuildRequest({
+      manifestPath: "C:\\project\\.feature-context\\login\\manifest.json",
+      selections: { "src/login.ts": false },
+      maxOutputFiles: 3
+    });
+    expect(parsed).toEqual({
+      manifestPath: "C:\\project\\.feature-context\\login\\manifest.json",
+      maxOutputFiles: 3
+    });
   });
 });

@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MobileApp } from "../../src/mobile/MobileApp";
+import { JobPanel } from "../../src/mobile/features/jobs/JobPanel";
 
 class FakeEventSource {
   static readonly CONNECTING = 0;
@@ -100,6 +101,52 @@ describe("MobileApp", () => {
       expect(body).not.toHaveProperty("projectRoot");
       expect(body).not.toHaveProperty("geminiApiKey");
     });
+  });
+
+  it("関連ソースは選択UIではなく自動採用結果として表示する", () => {
+    render(
+      <JobPanel
+        job={{
+          id: "job-complete",
+          projectId: "project-1",
+          projectLabel: "Web App",
+          feature: "ログイン機能",
+          state: "completed",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          result: {
+            feature: "ログイン機能",
+            provider: "gemini",
+            detectedFiles: 1,
+            bundledSourceFiles: 1,
+            totalChars: 1_000,
+            estimatedTokens: 250,
+            warnings: [],
+            uncertainties: [],
+            artifacts: [],
+            relatedFiles: [{
+              path: "src/login.ts",
+              normalizedPath: "src/login.ts",
+              role: "ログイン処理",
+              reason: "機能の入口",
+              priority: "core",
+              group: "frontend",
+              valid: true,
+              included: true
+            }],
+            zipUrl: "/bundle.zip"
+          }
+        }}
+        onCancel={vi.fn()}
+        onPreview={vi.fn()}
+        onShare={vi.fn()}
+        onRebuild={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("自動選定された関連ソース")).toBeInTheDocument();
+    expect(screen.getByText("自動採用")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 });
 

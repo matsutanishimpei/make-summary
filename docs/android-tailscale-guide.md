@@ -156,7 +156,7 @@ Gemini CLIまたはCodex CLIを選ぶ場合は、PC側で該当CLIがインス�
 - 対応ブラウザでMarkdownを他アプリへ共有
 - 全Markdownを1つのZIPとして保存
 - 関連ソースの含める・除外するを変更
-- AIを再実行せずにbundleだけ再構築
+- 容量上限を変えて、AIを再実行せずにbundleだけ再構築
 
 ### ZIPをChatGPTへ添付する流れ
 

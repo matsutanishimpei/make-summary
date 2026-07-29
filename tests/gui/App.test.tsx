@@ -28,12 +28,30 @@ const result: BuildResult = {
       feature: "ログイン機能",
       overview: "概要",
       flow: ["Login"],
-      files: [],
+      files: [{
+        path: "src/login.ts",
+        role: "ログイン処理",
+        reason: "機能の入口",
+        priority: "core",
+        group: "frontend",
+        recommended: true
+      }],
       uncertainties: []
     },
-    relatedFiles: [],
-    validation: { detected: 0, valid: 0, invalid: 0 },
-    selections: {},
+    relatedFiles: [{
+      path: "src/login.ts",
+      normalizedPath: "src/login.ts",
+      role: "ログイン処理",
+      reason: "機能の入口",
+      priority: "core",
+      group: "frontend",
+      recommended: true,
+      valid: true,
+      included: true,
+      userSelected: null
+    }],
+    validation: { detected: 1, valid: 1, invalid: 0 },
+    selections: { "src/login.ts": true },
     bundledSources: [],
     omittedSources: [],
     bundleFiles: [
@@ -129,6 +147,9 @@ describe("App", () => {
     );
     expect(await screen.findByRole("heading", { name: "生成結果" })).toBeInTheDocument();
     expect(screen.getByText("01-overview.md")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "自動選定された関連ソース" })).toBeInTheDocument();
+    expect(screen.getByText("自動採用")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /src\/login\.tsを含める/ })).not.toBeInTheDocument();
   });
 
   it("Gemini APIを選択し、共通の保存済みキーと指定モデルを使える", async () => {
@@ -186,5 +207,16 @@ describe("App", () => {
     );
     await waitFor(() => expect(input).toHaveValue(""));
     expect(screen.getByText("Windowsへ暗号化保存済み")).toBeInTheDocument();
+  });
+
+  it("コメント指針から対象、タグの粒度、更新ルールを確認できる", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: /コメント指針/ }));
+
+    expect(await screen.findByRole("heading", { name: "ファイル単位のコメント指針" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "付ける対象" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "タグごとの粒度" })).toBeInTheDocument();
+    expect(screen.getByText(/コメントは仕様書ではありません/)).toBeInTheDocument();
+    expect(screen.getAllByText(/@caution/).length).toBeGreaterThan(0);
   });
 });

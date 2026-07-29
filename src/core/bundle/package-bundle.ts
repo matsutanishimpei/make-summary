@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature bundle generation, output budgets, manifest
+ * @role overviewと実コードの実測文字数を調整し、安全な上限内でbundleとmanifestを確定する
+ * @entry packageBundle
+ * @flow recommended + priority sorting -> budget-aware code packing -> exact overview -> atomic output
+ * @related code-packer.ts, overview-renderer.ts, output-repository.ts
+ * @caution 最大文字数を超えず、固定余白ではなく再梱包で実コードへ使える容量を確保する
+ */
+
 import path from "node:path";
 import { FeatureContextError } from "../errors.js";
 import type {
@@ -15,10 +25,10 @@ import { writeBundleAtomically } from "./output-repository.js";
 
 export async function packageBundle(input: PackageInput): Promise<Manifest> {
   const sorted = [...input.collected].sort((a, b) => {
-    const manualA = a.record.userSelected === true ? 0 : 1;
-    const manualB = b.record.userSelected === true ? 0 : 1;
+    const recommendedA = a.record.recommended ? 0 : 1;
+    const recommendedB = b.record.recommended ? 0 : 1;
     return (
-      manualA - manualB ||
+      recommendedA - recommendedB ||
       priorityRank[a.record.priority] - priorityRank[b.record.priority] ||
       a.record.normalizedPath!.localeCompare(b.record.normalizedPath!)
     );
@@ -27,44 +37,55 @@ export async function packageBundle(input: PackageInput): Promise<Manifest> {
   let sourceArtifacts: ArtifactContent[] = [];
   let bundledSources: BundledSource[] = [];
   let omittedSources = initialOmissions(input.records, input.concat, input.maxOutputFiles);
+  const generatedAt = new Date().toISOString();
 
   const preliminaryOverview = renderOverview({
     ...input,
     bundledSources,
     omittedSources,
-    generatedAt: new Date().toISOString()
+    generatedAt
   });
   if (preliminaryOverview.length > input.maxFileChars || preliminaryOverview.length > input.maxTotalChars) {
     throw new FeatureContextError("OUTPUT_LIMIT", undefined, "01-overview.md alone exceeds the configured limit");
   }
 
   if (input.concat && input.maxOutputFiles > 1) {
-    const codeBudget = Math.max(
-      0,
-      input.maxTotalChars - preliminaryOverview.length - Math.min(4000, Math.floor(input.maxTotalChars * 0.04))
-    );
-    const packed = packCode(
-      sorted,
-      input.maxOutputFiles - 1,
-      input.maxFileChars,
-      codeBudget
-    );
-    sourceArtifacts = packed.artifacts;
-    bundledSources = packed.bundled;
-    const bundledPaths = new Set(bundledSources.map((item) => item.path));
-    omittedSources = input.records
-      .filter((record) => !record.valid || !record.normalizedPath || !bundledPaths.has(record.normalizedPath))
-      .map((record) => ({
-        path: record.normalizedPath ?? record.path,
-        reason:
-          record.exclusionReason ??
-          (!record.included
-            ? "ユーザーまたはAIの選択によりコード連結の対象外"
-            : "文字数上限または添付用ファイル数上限のため未収録")
-      }));
+    let codeBudget = Math.max(0, input.maxTotalChars - preliminaryOverview.length);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const packed = packCode(
+        sorted,
+        input.maxOutputFiles - 1,
+        input.maxFileChars,
+        codeBudget
+      );
+      const bundledPaths = new Set(packed.bundled.map((item) => item.path));
+      const nextOmitted = input.records
+        .filter((record) => !record.valid || !record.normalizedPath || !bundledPaths.has(record.normalizedPath))
+        .map((record) => ({
+          path: record.normalizedPath ?? record.path,
+          reason:
+            record.exclusionReason ??
+            (!record.included
+              ? "安全検証によりコード連結の対象外"
+              : "文字数上限または添付用ファイル数上限のため未収録")
+        }));
+      const nextOverview = renderOverview({
+        ...input,
+        bundledSources: packed.bundled,
+        omittedSources: nextOmitted,
+        generatedAt
+      });
+      const nextCodeChars = packed.artifacts.reduce((sum, item) => sum + item.content.length, 0);
+      const overflow = nextOverview.length + nextCodeChars - input.maxTotalChars;
+
+      sourceArtifacts = packed.artifacts;
+      bundledSources = packed.bundled;
+      omittedSources = nextOmitted;
+      if (overflow <= 0) break;
+      codeBudget = Math.max(0, codeBudget - overflow);
+    }
   }
 
-  const generatedAt = new Date().toISOString();
   const overview = renderOverview({ ...input, bundledSources, omittedSources, generatedAt });
   if (overview.length > input.maxFileChars) {
     throw new FeatureContextError("OUTPUT_LIMIT", undefined, "01-overview.md exceeds the per-file limit");
@@ -143,7 +164,7 @@ function initialOmissions(
     reason:
       record.exclusionReason ??
       (!record.included
-        ? "ユーザーまたはAIの選択によりコード連結の対象外"
+        ? "安全検証によりコード連結の対象外"
         : !concat
           ? "コード連結オプションが無効"
           : maxOutputFiles <= 1

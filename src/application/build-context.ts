@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature context generation, automatic source inclusion, application use case
+ * @role AI調査から全関連候補の安全検証・収集・容量最適化bundle生成までを統括する
+ * @entry BuildFeatureContext.execute
+ * @flow build options -> investigation -> automatic candidate validation -> collection -> package
+ * @related ports.ts, rebuild-bundle.ts, ../core/validate.ts
+ * @caution file単位の採否入力を受けず、安全検証に通った候補をすべて梱包へ渡す
+ */
+
 import path from "node:path";
 import { FEATURE_CONTEXT_LIMITS } from "../contracts/defaults.js";
 import { FeatureContextError, asFeatureContextError } from "../core/errors.js";
@@ -51,8 +61,7 @@ export class BuildFeatureContext {
       report({ stage: "validating", message: "関連ファイルを検証中" });
       const validation = await this.dependencies.workspace.validateRelatedFiles(
         projectRoot,
-        investigation.files,
-        options.selections
+        investigation.files
       );
       if (!validation.records.some((record) => record.valid)) {
         throw new FeatureContextError("NO_VALID_FILES", undefined, validation.warnings.join("\n"));

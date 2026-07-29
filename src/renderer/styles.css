@@ -1,3 +1,10 @@
+/**
+ * @feature-context
+ * @feature desktop UI, comment guidance, result workflow
+ * @role PC版のnavigation、調査画面、成果物、コメント指針helpを一貫したlayoutで表示する
+ * @related App.tsx, features/help/FileCommentHelp.tsx, features/results/ResultPanel.tsx
+ */
+
 :root {
   font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
   color: #18242d;
@@ -35,7 +42,7 @@ h1 { margin: 0; font-size: 31px; letter-spacing: -0.025em; }
 .status-error { color: var(--danger); background: #fff0f0; border-color: #e1abab; }
 
 .app-navigation { margin-bottom: 20px; }
-.app-navigation > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 11px; background: #e5ebee; }
+.app-navigation > div { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 11px; background: #e5ebee; }
 .app-navigation button { display: grid; gap: 3px; justify-items: start; color: #43545e; background: transparent; border: 1px solid transparent; padding: 11px 15px; text-align: left; }
 .app-navigation button small { color: var(--muted); font-size: 10px; font-weight: 400; }
 .app-navigation button[aria-selected="true"] { color: var(--ink); background: #fff; border-color: #cbd6db; box-shadow: 0 3px 10px rgba(23, 43, 55, 0.07); }
@@ -90,6 +97,19 @@ button { border: 1px solid transparent; border-radius: 7px; padding: 9px 15px; f
 .error-box summary { cursor: pointer; margin-top: 8px; }
 .error-box pre { max-height: 180px; overflow: auto; white-space: pre-wrap; color: #542020; }
 .notice { margin-top: 16px; padding: 11px 13px; background: #ebf6ee; color: #28623a; border: 1px solid #b9d8c1; border-radius: 7px; }
+
+.help-callout { margin-bottom: 18px; padding: 15px 17px; border: 1px solid #b8d7d2; border-radius: 8px; background: var(--soft-accent); }
+.help-callout p { margin: 6px 0 0; color: #3f5a61; font-size: 13px; line-height: 1.6; }
+.help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.help-grid article, .help-section { padding: 17px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfc; }
+.help-grid ul, .help-section ol { margin: 0; padding-left: 20px; color: #455660; font-size: 13px; line-height: 1.7; }
+.help-section { margin-top: 16px; }
+.help-section > p { color: var(--muted); font-size: 13px; }
+.help-code { overflow: auto; margin: 12px 0 0; padding: 15px; border-radius: 7px; color: #dcebed; background: #20343d; font: 12px/1.6 Consolas, "Cascadia Mono", monospace; }
+.help-tag-list { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.help-tag-list > div { display: grid; grid-template-columns: 105px 1fr; gap: 12px; padding: 11px 13px; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.55; }
+.help-tag-list > div:last-child { border-bottom: 0; }
+.help-tag-list code { color: var(--accent); font-weight: 700; }
 
 .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
 .metric { border: 1px solid var(--line); border-radius: 8px; padding: 13px; background: #fafbfb; }

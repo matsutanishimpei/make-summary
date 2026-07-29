@@ -1,3 +1,13 @@
+/**
+ * @feature-context
+ * @feature mobile jobs, automatic source inclusion, remote rebuild
+ * @role 登録projectの調査jobと、file選択を伴わない容量条件だけのbundle再構築を管理する
+ * @entry GatewayJobService, validateBuildRequest, validateRebuildRequest, toRemoteJob
+ * @flow authenticated request -> coordinated build or capacity rebuild -> sanitized remote result
+ * @related types.ts, ../application/rebuild-bundle.ts
+ * @caution スマホからproject path、API key、file単位のselectionsを受け取らない
+ */
+
 import { randomUUID } from "node:crypto";
 import {
   JobCoordinator,
@@ -115,7 +125,6 @@ export class GatewayJobService {
         this.createService().rebuild(
           {
             manifestPath: source.result.manifestPath,
-            selections: body.selections,
             maxOutputFiles: body.maxOutputFiles,
             maxTotalChars: body.maxTotalChars,
             force: true
@@ -185,10 +194,8 @@ export function validateBuildRequest(body: MobileBuildRequest): void {
 
 export function validateRebuildRequest(body: RebuildRequest): void {
   if (
-    !body?.selections ||
-    typeof body.selections !== "object" ||
-    Object.keys(body.selections).length > 10_000 ||
-    Object.values(body.selections).some((value) => typeof value !== "boolean") ||
+    !body ||
+    typeof body !== "object" ||
     (body.maxOutputFiles !== undefined &&
       (!Number.isInteger(body.maxOutputFiles) ||
         body.maxOutputFiles < 1 ||
@@ -198,7 +205,7 @@ export function validateRebuildRequest(body: RebuildRequest): void {
         body.maxTotalChars < 1_000 ||
         body.maxTotalChars > 2_000_000))
   ) {
-    throw new HttpError(400, "関連ソースの選択が不正です。");
+    throw new HttpError(400, "再構築の上限値が不正です。");
   }
 }
 
@@ -250,7 +257,6 @@ function toRemoteResult(jobId: string, result: BuildResult): RemoteJobResult {
       included: record.included,
       exclusionReason: record.exclusionReason
     })),
-    selections: result.manifest.selections,
     zipUrl: `/api/v1/jobs/${jobId}/bundle.zip`
   };
 }

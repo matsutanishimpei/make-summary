@@ -14,6 +14,7 @@ import {
   type InvestigationRunner,
   type Investigation
 } from "../../src/core/index.js";
+import { packCode } from "../../src/core/bundle/code-packer.js";
 
 class MockRunner implements InvestigationRunner {
   inspectCalls = 0;
@@ -146,6 +147,136 @@ describe("FeatureContextService", () => {
     ]);
   });
 
+  it("大きなファイルは実コードの連続行へ分け、成果物の空きをできるだけ使う", () => {
+    const lines = Array.from(
+      { length: 80 },
+      (_, index) => `export const value${index} = "${String(index).padStart(2, "0")}-${"x".repeat(32)}";`
+    );
+    const content = `${lines.join("\n")}\n`;
+    const packed = packCode(
+      [{
+        record: {
+          path: "src/large.ts",
+          normalizedPath: "src/large.ts",
+          role: "大きな実装",
+          reason: "梱包の分割を検証",
+          priority: "core",
+          group: "core",
+          recommended: true,
+          valid: true,
+          included: true,
+          userSelected: null
+        },
+        content,
+        lineCount: content.split("\n").length
+      }],
+      3,
+      1_000,
+      3_000
+    );
+
+    expect(packed.artifacts).toHaveLength(3);
+    expect(packed.artifacts.every((artifact) => artifact.content.length <= 1_000)).toBe(true);
+    expect(packed.bundled).toHaveLength(3);
+    expect(packed.bundled[0].lineStart).toBe(1);
+    expect(packed.bundled[1].lineStart).toBe(packed.bundled[0].lineEnd + 1);
+    expect(packed.bundled[2].lineStart).toBe(packed.bundled[1].lineEnd + 1);
+    expect(packed.bundled[0].lineEnd).toBeLessThan(lines.length);
+    expect(packed.artifacts.map((artifact) => artifact.content).join("\n")).toContain(lines[0]);
+    expect(packed.artifacts.map((artifact) => artifact.content).join("\n")).toContain(
+      lines[packed.bundled[2].lineStart - 1]
+    );
+  });
+
+  it("小さいgroupの成果物に残った容量も、別groupの関連コードで埋める", () => {
+    const record = (
+      filePath: string,
+      group: string,
+      role: string
+    ) => ({
+      path: filePath,
+      normalizedPath: filePath,
+      role,
+      reason: "group間の空き容量を検証",
+      priority: "core" as const,
+      group,
+      recommended: true,
+      valid: true,
+      included: true,
+      userSelected: null
+    });
+    const largeLines = Array.from(
+      { length: 60 },
+      (_, index) => `export const implementation${index} = "${"x".repeat(28)}";`
+    );
+    const packed = packCode(
+      [
+        {
+          record: record(".gitignore", "config", "除外設定"),
+          content: "dist/\nbuild/\n",
+          lineCount: 3
+        },
+        {
+          record: record("src/implementation.ts", "core", "主要実装"),
+          content: `${largeLines.join("\n")}\n`,
+          lineCount: largeLines.length + 1
+        }
+      ],
+      2,
+      1_000,
+      2_000
+    );
+
+    expect(packed.artifacts).toHaveLength(2);
+    expect(packed.artifacts[0].content).toContain("dist/\nbuild/\n");
+    expect(packed.artifacts[0].content).toContain(largeLines[0]);
+    const implementationRanges = packed.bundled.filter(
+      (item) => item.path === "src/implementation.ts"
+    );
+    expect(implementationRanges).toHaveLength(2);
+    expect(implementationRanges[1].lineStart).toBe(implementationRanges[0].lineEnd + 1);
+    expect(packed.artifacts.every((artifact) => artifact.content.length > 850)).toBe(true);
+  });
+
+  it("部分収録をoverviewへ明示し、bundle全体の実測上限内までコードを詰める", async () => {
+    const filePath = "src/large-multiline.ts";
+    const content = Array.from(
+      { length: 180 },
+      (_, index) => `export function operation${index}() { return "${"x".repeat(24)}"; }`
+    ).join("\n");
+    await write(filePath, content);
+    const result = await createService(
+      new MockRunner({
+        feature: "大きな実装",
+        overview: "",
+        flow: [],
+        files: [{
+          path: filePath,
+          role: "主要実装",
+          reason: "部分収録の統合検証",
+          priority: "core",
+          group: "core",
+          recommended: true
+        }],
+        uncertainties: []
+      })
+    ).build(options({
+      name: "partial-source",
+      summary: false,
+      maxOutputFiles: 3,
+      maxFileChars: 2_000,
+      maxTotalChars: 6_000
+    }));
+
+    expect(result.manifest.totalChars).toBeLessThanOrEqual(6_000);
+    expect(result.manifest.bundledSources).toHaveLength(2);
+    expect(result.manifest.bundledSources[1].lineStart)
+      .toBe(result.manifest.bundledSources[0].lineEnd + 1);
+    expect(result.manifest.bundledSources[1].lineEnd).toBeLessThan(180);
+    const overview = await fs.readFile(result.manifest.bundleFiles[0].path, "utf8");
+    expect(overview).toContain(`| ${filePath} | 主要実装 | 部分収録の統合検証 | core | core | 一部収録 |`);
+  });
+
   it("要約とコード連結を個別に無効化できる", async () => {
     const result = await createService(new MockRunner(investigation())).build(
       options({ name: "no-options", summary: false, concat: false })
@@ -175,21 +306,19 @@ describe("FeatureContextService", () => {
     expect(overview).toContain("セッション互換性を維持する");
   });
 
-  it("ユーザー選択を優先し、Geminiを再実行せずbundleだけ再構築する", async () => {
+  it("全関連候補を保ったまま、Geminiを再実行せず容量条件だけで再構築する", async () => {
     const runner = new MockRunner(investigation());
     const service = createService(runner);
     const first = await service.build(options({ name: "rebuild" }));
     const rebuilt = await service.rebuild({
       manifestPath: first.manifestPath,
-      selections: {
-        "src/Login.tsx": false,
-        "src/auth.ts": true,
-        "tests/auth.test.ts": false
-      },
+      maxOutputFiles: 4,
       force: true
     });
     expect(runner.investigateCalls).toBe(1);
-    expect(rebuilt.manifest.bundledSources.map((file) => file.path)).toEqual(["src/auth.ts"]);
+    expect(new Set(rebuilt.manifest.bundledSources.map((file) => file.path))).toEqual(
+      new Set(["src/Login.tsx", "src/auth.ts", "tests/auth.test.ts"])
+    );
   });
 
   it("文字数上限を超える場合は明示的に失敗する", async () => {
@@ -342,6 +471,23 @@ describe("Gemini JSONとパス検証", () => {
       { path: "packages/app/private.local.ts", valid: false },
       { path: "packages/app/keep.local.ts", valid: true }
     ]);
+  });
+
+  it("AIが弱い関連とした安全な候補も自動的に含める", async () => {
+    await write("src/weakly-related.ts", "export const setting = true;\n");
+    const candidate = {
+      ...file("src/weakly-related.ts"),
+      recommended: false
+    };
+
+    const automatic = await validateRelatedFiles(root, [candidate]);
+    expect(automatic.records[0]).toMatchObject({
+      valid: true,
+      included: true,
+      userSelected: null,
+      recommended: false
+    });
+
   });
 
   it("検証後に追加されたgitignoreとコード内シークレットを収集直前に再検査する", async () => {
